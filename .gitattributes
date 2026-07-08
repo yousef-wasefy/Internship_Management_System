@@ -1,0 +1,15 @@
+# Normalize line endings: store text as LF in the repo, check out native on Windows.
+# Prevents CRLF/LF churn once Linux containers (Docker) are added.
+* text=auto eol=lf
+
+# Windows-specific scripts should keep CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Treat these as binary (never normalize)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary

@@ -1,0 +1,42 @@
+# ---- .NET / ASP.NET Core ----
+bin/
+obj/
+out/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+project.lock.json
+artifacts/
+
+# EF Core: keep Migrations/ (they are source), but ignore local db files
+*.db
+*.db-shm
+*.db-wal
+
+# ---- Node / React (Vite) ----
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- Editors / OS ----
+.claude/settings.local.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ---- Secrets / environment ----
+# Never commit real secrets. Only .env.example is tracked.
+.env
+.env.local
+.env.*.local
+appsettings.Development.local.json
+*.pfx
