@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend-api",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "backend/src/InternshipManagement.Api", "--launch-profile", "http"],
+      "port": 5053
+    }
+  ]
+}

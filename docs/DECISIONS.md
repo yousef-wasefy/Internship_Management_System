@@ -46,6 +46,17 @@ reason, and the alternative we rejected — so the choices can be explained in a
 - **Why:** Maximizes understanding and makes every phase independently testable — the core
   requirement of this project.
 
+## D7 — Swagger UI via Swashbuckle.AspNetCore (not the built-in OpenApi package)
+- **Decision:** Use `Swashbuckle.AspNetCore` for API documentation instead of the .NET 10
+  template default (`Microsoft.AspNetCore.OpenApi`).
+- **Why:** The template default only serves the raw OpenAPI JSON — no browsable UI. The
+  project brief and phase acceptance criteria require an interactive Swagger page to
+  manually test endpoints, which is exactly what Swashbuckle's `/swagger` UI provides.
+  As a side effect, it also resolved a NuGet security advisory (NU1903) on the transitive
+  `Microsoft.OpenApi` 2.0.0 dependency pulled in by the template default.
+- **Rejected:** Keeping `Microsoft.AspNetCore.OpenApi` + adding a separate UI (e.g. Scalar)
+  — more moving parts for no benefit over Swashbuckle's all-in-one package.
+
 ---
 
 _Add new decisions below as they come up (e.g., JWT storage on the frontend, deployment
