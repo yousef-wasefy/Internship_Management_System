@@ -40,3 +40,33 @@ Template for each entry:
   why Swagger is useful during development (test endpoints without writing a frontend);
   what `dotnet build` vs `dotnet run` do; why the app currently reports "No operations
   defined in spec" (no controllers exist yet — that's Phase 5).
+
+## Phase 2 — Just-Enough C# (2026-07-15)
+- **New concepts:** Auto-properties (`public string X { get; set; }`) as C#'s built-in
+  get/set — no hand-written accessor methods like Java. Object initializer syntax
+  (`new Internship(...) { Status = InternshipStatus.Open }`) for setting extra properties
+  right after construction. `List<T>` as the generic collection (same idea as Java's
+  `List<T>` / C++'s `std::vector<T>`). `enum` as a closed, named set of values instead of
+  raw strings/ints — the compiler rejects anything not in the set. An `interface`
+  (`IApplicationValidator`) as a contract with no implementation; a class `: IInterface`
+  promises to fulfill it. `async`/`await` and `Task<T>` for non-blocking I/O-bound work.
+  Top-level statements (`Program.cs` with no `Main` method or class wrapper) as C#'s
+  modern, minimal entry point.
+- **What confused me / how I resolved it:** In C++, `class` members are private by
+  default and you write explicit getters/setters; in C#, auto-properties give you that
+  for free with one line, and members are `private` by default too but properties are
+  usually `public` on purpose (that's the point — controlled *public* access to backing
+  data). Also: `async` methods don't run on a separate thread by magic — `await
+  Task.Delay(200)` frees the calling thread to do other work while waiting, then resumes
+  where it left off; it's not the same as spawning a new thread.
+- **Could now explain in an interview:** What a class/property/constructor is; the
+  difference between a `class` and a `List<T>` of that class; why `enum` beats magic
+  strings for status fields; why services depend on an `interface`
+  (`IApplicationValidator`) instead of a concrete class — so the real
+  `ApplicationService` (Phase 9) can be unit-tested against a fake validator without a
+  real database; why `async`/`await` matters specifically for database calls (EF Core
+  queries from Phase 4 onward are all `async Task<T>`); and the difference between an
+  **entity** (a class that maps to a database table, coming in Phase 4) and a **DTO**
+  (a class shaped for what an API request/response should look like, coming in Phase 5)
+  — the practice classes here (`Student`, `Company`, ...) are neither yet; they're just
+  syntax practice.

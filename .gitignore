@@ -40,3 +40,5 @@ Thumbs.db
 .env.*.local
 appsettings.Development.local.json
 *.pfx
+
+docs/phase-summaries/
