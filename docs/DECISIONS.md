@@ -57,6 +57,36 @@ reason, and the alternative we rejected — so the choices can be explained in a
 - **Rejected:** Keeping `Microsoft.AspNetCore.OpenApi` + adding a separate UI (e.g. Scalar)
   — more moving parts for no benefit over Swashbuckle's all-in-one package.
 
+## D8 — Primary keys: `int` identity, not `Guid`
+- **Decision:** Every table uses an auto-increment `int Id` as its primary key.
+- **Why:** Simpler to read, type, and debug while testing in Swagger/Postman
+  (`GET /internships/3` vs. a long GUID string). This project has no distributed/offline
+  data-merging scenario that would require globally unique IDs.
+- **Rejected:** `Guid` primary keys (avoids exposing sequential IDs and is common with
+  ASP.NET Identity, but adds unnecessary friction for a beginner project with no need for
+  ID unguessability).
+
+## D9 — `User` is separate from `StudentProfile`/`CompanyProfile`; no `AdminProfile`
+- **Decision:** Authentication data (`Email`, `PasswordHash`, `Role`) lives in one `User`
+  table. Role-specific data lives in separate `StudentProfile`/`CompanyProfile` tables,
+  linked 1–1 by a unique `UserId` foreign key. Admins are just a `User` with
+  `Role = Admin` — there is no `AdminProfile` table.
+- **Why:** Avoids one wide table full of nulls (a company row would have no `FullName`, a
+  student row would have no `CompanyName`). Keeps auth concerns isolated from profile
+  concerns. Admins have no extra fields in `docs/REQUIREMENTS.md`, so a profile table for
+  them would be an empty, unused table.
+- **Rejected:** One single `User` table with every possible field for every role
+  (simpler at first glance, but leads to a sparse, confusing schema as fields grow).
+
+## D10 — `Skills` stored as one comma-separated string, not a normalized table
+- **Decision:** `StudentProfile.Skills` is a single free-text string column.
+- **Why:** A fully normalized `Skill` + `StudentSkill` many-to-many table is the "more
+  correct" relational design, but it's unnecessary complexity for v1 — nothing in the MVP
+  requirements needs to query/filter by individual skill. Matches the project rule to
+  avoid over-engineering.
+- **Rejected:** Normalized `Skill`/`StudentSkill` tables (logged as a candidate under
+  README "Future Improvements" if skill-based search is ever needed).
+
 ---
 
 _Add new decisions below as they come up (e.g., JWT storage on the frontend, deployment

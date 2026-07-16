@@ -70,3 +70,28 @@ Template for each entry:
   (a class shaped for what an API request/response should look like, coming in Phase 5)
   — the practice classes here (`Student`, `Company`, ...) are neither yet; they're just
   syntax practice.
+
+## Phase 3 — Database Design (2026-07-16)
+- **New concepts:** Reading and writing an ERD (entity-relationship diagram) — boxes are
+  tables, lines are relationships, and the little symbols on each end of a line (`||`,
+  `o{`, ...) encode cardinality ("exactly one", "zero or many"). The difference between a
+  **primary key** (uniquely identifies a row in its own table) and a **foreign key**
+  (a column that points at another table's primary key). A **composite unique
+  constraint** — a uniqueness rule across *two columns together*, not each column alone
+  (`(StudentId, InternshipPostId)` can repeat StudentId many times and InternshipPostId
+  many times, just never the same *pair* twice). What a **join table** is and why
+  many-to-many relationships always need one in a relational database.
+- **What confused me / how I resolved it:** At first it seemed like the duplicate-application
+  rule ("a student can't apply twice") was purely an *application* rule to check in code.
+  Realized the database can enforce it too, independently, via the composite unique
+  constraint — so even a bug in the service code couldn't let a duplicate through; the
+  database would reject the insert. This is "defense in depth" — checking in two places
+  for the same rule, so one broken layer doesn't silently break the rule.
+- **Could now explain in an interview:** Why `InternshipApplication` is a join table (and
+  not just two foreign keys sitting somewhere) — it carries its own data (`Status`,
+  `CoverLetter`, timestamps) rather than only recording that a link exists. Why `User` is
+  a separate table from `StudentProfile`/`CompanyProfile` instead of one giant table
+  (avoids a sparse table full of nulls, keeps auth data isolated from profile data). Why
+  the schema uses `int` primary keys instead of `Guid` (simplicity — easier to read/type
+  while testing). Why `Skills` is a single string field instead of a normalized table for
+  v1 (avoiding over-engineering a feature nothing in the MVP actually needs yet).
