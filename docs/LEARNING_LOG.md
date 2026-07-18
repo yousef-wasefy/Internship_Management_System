@@ -95,3 +95,36 @@ Template for each entry:
   the schema uses `int` primary keys instead of `Guid` (simplicity — easier to read/type
   while testing). Why `Skills` is a single string field instead of a normalized table for
   v1 (avoiding over-engineering a feature nothing in the MVP actually needs yet).
+
+## Phase 4 — EF Core Setup & First Migration (2026-07-18)
+- **New concepts:** `DbContext` as the bridge between C# objects and database tables —
+  one `DbSet<T>` property per table. EF Core's *convention-based* relationship discovery:
+  because `StudentProfile.User` and `User.StudentProfile` are both single references (not
+  lists), EF Core automatically treats it as a 1-to-1 relationship without being told —
+  only the *uniqueness* of the `UserId` index had to be configured explicitly in
+  `OnModelCreating`. What a **migration** actually is: a C# file with an `Up()` method
+  (what to run to apply the change) and a `Down()` method (how to undo it), plus a
+  `ModelSnapshot` file that tracks the model's current shape so the next migration only
+  contains the *difference*. What **.NET User Secrets** is and why it exists (a way to
+  keep real local credentials completely outside the git repository, not just
+  `.gitignore`d inside it).
+- **What confused me / how I resolved it:** Running `dotnet ef database update` printed a
+  scary-looking `fail:` line before succeeding — turned out to be EF Core's own
+  first-run check (querying its internal `__EFMigrationsHistory` table, which doesn't
+  exist yet on a brand-new database), not a real error; it's expected and harmless on the
+  very first migration. Also: the FK delete behavior defaulted to `CASCADE` for every
+  relationship without being asked — that's EF Core's convention for *required*
+  relationships (a `StudentProfile` can't exist without its `User`, so deleting the `User`
+  cascades). This is a sensible default for now since nothing in this project hard-deletes
+  rows yet (disabling/rejecting uses boolean flags instead).
+- **Could now explain in an interview:** The difference between *designing* a schema
+  (Phase 3, no tools involved) and *migrating* it (Phase 4, `dotnet ef migrations add`
+  generates code, `dotnet ef database update` runs it against a real database). Why a
+  password should never be typed directly into a file that's already tracked by git, and
+  what tool (User Secrets) solves that for local development specifically. Why creating a
+  dedicated, least-privilege database role for the app (instead of using the Postgres
+  superuser everywhere) is safer — the app can only ever do what that one role is allowed
+  to do. Proved — not just assumed — that the composite unique constraint actually
+  rejects a duplicate application by inserting one directly with `psql` and watching
+  PostgreSQL reject the second insert with `duplicate key value violates unique
+  constraint`.

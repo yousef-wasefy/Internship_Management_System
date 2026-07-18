@@ -87,6 +87,27 @@ reason, and the alternative we rejected — so the choices can be explained in a
 - **Rejected:** Normalized `Skill`/`StudentSkill` tables (logged as a candidate under
   README "Future Improvements" if skill-based search is ever needed).
 
+## D11 — Local DB credentials live in .NET User Secrets, not in a committed file
+- **Decision:** The real PostgreSQL connection string (with the password) is stored via
+  `dotnet user-secrets`, which writes it to a per-user file outside the repository
+  entirely (`%APPDATA%\Microsoft\UserSecrets\<id>\secrets.json`). `appsettings.Development.json`
+  only holds a placeholder connection string with an obviously-fake password
+  (`set-via-dotnet-user-secrets`), which fails fast with a clear auth error if secrets
+  aren't configured — rather than silently trying to connect with an empty/wrong password.
+- **Why:** `appsettings.Development.json` was already committed to git in Phase 1 (it's
+  part of the standard template output). Writing a real password into it risks that
+  password landing in GitHub history the moment anyone runs a plain `git add`/`commit`.
+  User Secrets is the ASP.NET Core-official mechanism for exactly this problem, and it's
+  loaded automatically in the `Development` environment with zero extra code.
+- **Rejected:** Adding `appsettings.Development.json` to `.gitignore` and putting the real
+  password directly in it (works, but is easy to accidentally reverse — e.g., a future
+  `git add -A` on a re-created default file — whereas User Secrets can never be committed
+  because it never lives inside the project folder at all).
+- **Also decided alongside this:** a dedicated, least-privilege PostgreSQL role
+  (`internship_app`) and database (`internship_management`) were created for this project
+  instead of using the `postgres` superuser — the superuser's password is never used by,
+  or known to, this application at all.
+
 ---
 
 _Add new decisions below as they come up (e.g., JWT storage on the frontend, deployment
