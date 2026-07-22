@@ -128,3 +128,34 @@ Template for each entry:
   rejects a duplicate application by inserting one directly with `psql` and watching
   PostgreSQL reject the second insert with `duplicate key value violates unique
   constraint`.
+
+## Phase 5 — Internship CRUD API (2026-07-22)
+- **New concepts:** The controller → service → `DbContext` split in practice for the
+  first time — `InternshipsController` only translates HTTP requests into service calls
+  and results back into HTTP responses; every actual decision (which company owns a new
+  post, how to map an entity to a DTO) lives in `InternshipService`. Why DTOs exist as
+  *separate* classes from entities: `CreateInternshipDto` deliberately has no `Status` or
+  `CompanyId` field, because a client should never be able to set those directly — the
+  server decides them. `[ApiController]` + `ActionResult<T>` conventions:
+  `Ok()`/`NotFound()`/`CreatedAtAction()`/`NoContent()` map directly to the HTTP status
+  codes (200/404/201/204) a REST API is expected to return. EF Core "relationship
+  fixup": setting `post.Company = company` (a navigation property) before saving
+  automatically fills in `post.CompanyId` — no need to set the foreign key by hand.
+- **What confused me / how I resolved it:** Sending an `applicationDeadline` without a
+  timezone offset (e.g. `"2026-12-31T00:00:00"` instead of `"...Z"`) crashed the save
+  with an Npgsql error, because the column is `timestamp with time zone` and Npgsql
+  refuses a `DateTime` whose `Kind` isn't explicitly `Utc`. Fixed with a small
+  `AsUtc(...)` helper that treats an unspecified timezone as UTC rather than throwing.
+  Also: after creating and then rolling back test rows in Phase 4, the *next* real row
+  didn't get `Id = 1` as expected — it got `Id = 2`. This isn't a bug: PostgreSQL's
+  identity/sequence counters are **not transactional** — a `ROLLBACK` undoes the row
+  data but not the sequence's internal counter, so "the next id" can jump ahead of what
+  you'd naively expect after any rolled-back insert.
+- **Could now explain in an interview:** Why controllers should stay "thin" and business
+  logic belongs in services — testability (Phase 15 will unit-test `InternshipService`
+  without needing a running web server) and reuse (multiple controllers could call the
+  same service). Why a temporary, clearly-commented seed (`SeedData.cs`) is a reasonable
+  way to unblock CRUD testing before auth exists, as long as it's deliberately temporary
+  and documented as such. Why enums were configured to serialize as strings
+  (`"Remote"`) instead of raw numbers (`1`) in JSON — dramatically easier to read and
+  test against, at the cost of one line of startup configuration.

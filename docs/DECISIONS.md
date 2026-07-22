@@ -109,6 +109,3 @@ reason, and the alternative we rejected — so the choices can be explained in a
   or known to, this application at all.
 
 ---
-
-_Add new decisions below as they come up (e.g., JWT storage on the frontend, deployment
-platform choice, pagination strategy)._
