@@ -159,3 +159,41 @@ Template for each entry:
   and documented as such. Why enums were configured to serialize as strings
   (`"Remote"`) instead of raw numbers (`1`) in JSON — dramatically easier to read and
   test against, at the cost of one line of startup configuration.
+
+## Phase 6 — Authentication & Roles (2026-07-23)
+- **New concepts:** **Authentication** (proving who you are - login) vs.
+  **authorization** (what you're allowed to do once identified - roles). What a JWT
+  actually is: three base64 sections (header.payload.signature) - the payload is a set
+  of **claims** (email, role, ...) about who the token represents, and the signature
+  (computed with a secret key only the server knows) is what makes it tamper-evident,
+  not encrypted or secret in itself - anyone can *read* a JWT's claims, they just can't
+  *forge* a valid signature without the key. Why passwords are hashed with BCrypt (a
+  one-way function - the server never stores or can recover the original password, only
+  verify a guess against the hash) instead of encrypted (reversible, and therefore a
+  liability if the encryption key ever leaks). `[Authorize]` vs.
+  `[Authorize(Roles = "Company")]` - the former means "any valid token," the latter
+  means "a valid token whose role claim matches."
+- **What confused me / how I resolved it:** Adding Swagger's "Authorize" button broke
+  the build entirely - the tutorial-standard `Microsoft.OpenApi.Models` namespace and
+  `OpenApiSecurityScheme.Reference` property no longer exist, because Swashbuckle 10 /
+  Microsoft.OpenApi 2.x (pulled in by earlier phases) reworked how references work.
+  Fixed by researching the actual current API: the namespace is now just
+  `Microsoft.OpenApi` (no `.Models`), and building a security requirement now needs a
+  `document => new OpenApiSecurityRequirement { [new
+  OpenApiSecuritySchemeReference("Bearer", document)] = new List<string>() }` callback
+  instead of a plain object with a `Reference` property. A good reminder that a library
+  major-version bump can silently invalidate code that "should" work from older
+  tutorials/examples - always check what version is actually installed. Also: ASP.NET
+  Core silently *remaps* JWT claim names on the way in unless you turn it off
+  (`MapInboundClaims = false`) - without that, code reading back the exact claim name
+  used to create the token would mysteriously get `null`.
+- **Could now explain in an interview:** The full request lifecycle for a protected
+  endpoint - client sends `Authorization: Bearer <token>` → `UseAuthentication()`
+  validates the signature/expiry and builds a `ClaimsPrincipal` → `[Authorize(Roles=...)]`
+  checks the role claim → the action runs, or the request is rejected with 401
+  (not authenticated) or 403 (authenticated, wrong role) before the controller code ever
+  executes. Why login returns the identical error message for "wrong password" and
+  "no such account" (never reveal which one - avoids leaking which emails are
+  registered). Why `AuthService` methods return `null` for business-rule failures
+  instead of throwing - consistent with the pattern already used in `InternshipService`
+  (Phase 5), letting the controller translate `null` into the right HTTP status.

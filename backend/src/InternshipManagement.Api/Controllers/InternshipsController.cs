@@ -1,5 +1,6 @@
 using InternshipManagement.Api.DTOs.Internships;
 using InternshipManagement.Api.Services.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace InternshipManagement.Api.Controllers;
@@ -31,7 +32,11 @@ public class InternshipsController : ControllerBase
         return internship is null ? NotFound() : Ok(internship);
     }
 
+    // Only Companies can publish internships. Every post is still assigned to the
+    // temporary seeded placeholder company regardless of which company is logged in
+    // (see InternshipService.CreateAsync) until Phase 8 wires up the real ownership.
     [HttpPost]
+    [Authorize(Roles = "Company")]
     public async Task<ActionResult<InternshipDetailsDto>> Create(CreateInternshipDto dto)
     {
         var created = await _internshipService.CreateAsync(dto);
@@ -39,6 +44,7 @@ public class InternshipsController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "Company")]
     public async Task<IActionResult> Update(int id, UpdateInternshipDto dto)
     {
         var updated = await _internshipService.UpdateAsync(id, dto);
@@ -46,6 +52,7 @@ public class InternshipsController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Company")]
     public async Task<IActionResult> Delete(int id)
     {
         var deleted = await _internshipService.DeleteAsync(id);

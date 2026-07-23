@@ -108,4 +108,40 @@ reason, and the alternative we rejected — so the choices can be explained in a
   instead of using the `postgres` superuser — the superuser's password is never used by,
   or known to, this application at all.
 
+## D12 — JWT signing key also lives in User Secrets (extends D11)
+- **Decision:** The JWT signing key (`Jwt:Key`) is a cryptographically random 512-bit
+  value, generated once and stored via `dotnet user-secrets` — never in a committed file.
+  `appsettings.json` holds the non-secret `Jwt:Issuer`/`Jwt:Audience`/`Jwt:ExpiryMinutes`;
+  `appsettings.Development.json` holds only an obviously-fake `Jwt:Key` placeholder.
+- **Why:** The signing key is what makes a JWT unforgeable — anyone with this value could
+  mint a valid "admin" token for any account. It's exactly the same class of secret as the
+  database password (D11), so it gets the same treatment.
+- **Rejected:** Hardcoding a key directly in `Program.cs` or `appsettings.json` (extremely
+  common in tutorials, but means anyone with repo access could forge tokens).
+
+## D13 — `MapInboundClaims = false` on the JWT bearer handler
+- **Decision:** Set `options.MapInboundClaims = false` when configuring
+  `AddJwtBearer(...)`.
+- **Why:** By default, ASP.NET Core silently remaps short JWT claim names ("sub", "email")
+  to long legacy .NET `ClaimTypes` URIs when a token is validated — so code that reads
+  back `JwtRegisteredClaimNames.Sub` (the same constant used to *write* the claim) would
+  get `null` unless this remapping is disabled. Turning it off keeps claim names exactly
+  as `JwtTokenGenerator` wrote them — one less "magic" behavior to explain or debug
+  around, which matters for a project whose whole point is transparency.
+- **Rejected:** Reading claims via `ClaimTypes.NameIdentifier` instead (works, but means
+  the "write" code and "read" code use different-looking claim type constants for the
+  same value, which is confusing to trace for a beginner).
+
+## D14 — Seeded Admin account uses a known, documented dev-only password
+- **Decision:** `SeedData` creates one Admin user
+  (`admin@internship-system.local` / `Admin@12345`, hashed with BCrypt like every other
+  account) so there's something to log in as while testing. The password is documented
+  in `docs/API_SPEC.md` and this file, in plain sight.
+- **Why:** Some account needs to exist to test login-as-admin and (in Phase 11) the admin
+  endpoints. A known, documented dev-only credential is simpler than a setup wizard, and
+  is standard practice for local seed data.
+- **Must change before deployment:** this account must be rotated or removed before any
+  real deployment (Phase 17) — flagged here so it isn't forgotten. It is **not** a
+  production credential and must never be treated as one.
+
 ---

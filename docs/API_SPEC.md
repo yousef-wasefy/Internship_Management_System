@@ -4,9 +4,70 @@ Base URL (local development): `http://localhost:5053/api`
 
 Interactive documentation (Swagger UI): `http://localhost:5053/swagger`
 
-**Authentication:** none yet — every endpoint below is currently public. JWT-based
-authentication and role-based authorization are added in Phase 6, at which point this
-document will note which endpoints require a token and which role(s) can call them.
+**Authentication:** JWT bearer tokens, added in Phase 6. Register or log in to get a
+token, then send it as `Authorization: Bearer <token>` on protected endpoints. In Swagger,
+click **Authorize** and paste just the token (no `Bearer ` prefix needed). Tokens expire
+after 60 minutes.
+
+---
+
+## Auth
+
+Backed by `AuthController` → `IAuthService` → `AppDbContext`. All four endpoints are
+public (no token required to call them) — `register-*` and `login` hand out a token,
+`me` requires one.
+
+### `POST /api/auth/register-student`
+
+Creates a new **Student** account (a `User` + a `StudentProfile`) and immediately returns
+a token, the same as logging in right after.
+
+**Request body** — `RegisterStudentDto`
+```json
+{ "email": "sara@example.com", "password": "Passw0rd!", "fullName": "Sara Ahmed" }
+```
+**Response `200 OK`** — `AuthResponseDto`
+```json
+{
+  "token": "eyJhbGciOi...",
+  "expiresAt": "2026-07-23T14:26:06.968Z",
+  "email": "sara@example.com",
+  "role": "Student"
+}
+```
+**Response `409 Conflict`** — an account with this email already exists.
+
+### `POST /api/auth/register-company`
+
+Creates a new **Company** account (a `User` + a `CompanyProfile`, starting unapproved —
+REQUIREMENTS.md CO-3). Same response shape as above, with `role: "Company"`.
+
+**Request body** — `RegisterCompanyDto`
+```json
+{ "email": "hr@acme.com", "password": "Passw0rd!", "companyName": "Acme Corp" }
+```
+**Response `200 OK`** — `AuthResponseDto` · **Response `409 Conflict`** — email taken.
+
+### `POST /api/auth/login`
+
+**Request body** — `LoginDto`
+```json
+{ "email": "sara@example.com", "password": "Passw0rd!" }
+```
+**Response `200 OK`** — `AuthResponseDto` (same shape as register).
+**Response `401 Unauthorized`** — wrong password, unknown email, or a disabled account.
+The message is identical in every case (`"Invalid email or password."`) — the API never
+reveals *which* part was wrong.
+
+### `GET /api/auth/me`
+
+Returns the identity of whoever the bearer token belongs to. **Requires a token.**
+
+**Response `200 OK`** — `CurrentUserDto`
+```json
+{ "id": 6, "email": "sara@example.com", "role": "Student" }
+```
+**Response `401 Unauthorized`** — missing, expired, or invalid token.
 
 ---
 
@@ -14,12 +75,15 @@ document will note which endpoints require a token and which role(s) can call th
 
 Backed by `InternshipsController` → `IInternshipService` → `AppDbContext`.
 
+**Authorization:** `GET` endpoints are public. `POST`/`PUT`/`DELETE` require a valid
+token with the **Company** role (`[Authorize(Roles = "Company")]`).
+
 > **Temporary note (removed after Phase 8):** every `InternshipPost` created right now is
-> automatically assigned to a single seeded placeholder company (see
-> `Data/SeedData.cs`) — there is no concept of "the logged-in company" yet, since
-> authentication doesn't exist until Phase 6. `POST`/`PUT` do not accept a `companyId`;
-> the server decides it. Phase 8 replaces this with the real logged-in company and adds
-> a publishing workflow (`Draft` → `Open` → `Closed`/`Cancelled`) with ownership checks.
+> still automatically assigned to a single seeded placeholder company (see
+> `Data/SeedData.cs`), **regardless of which company is logged in** — Phase 6 only added
+> the "must be logged in as *some* Company" check, not "assign to *your* company." Phase 8
+> replaces this with the real logged-in company and adds a publishing workflow
+> (`Draft` → `Open` → `Closed`/`Cancelled`) with ownership checks.
 
 ### `GET /api/internships`
 
@@ -87,6 +151,8 @@ if no timezone offset is given, it's treated as UTC.
 
 **Response `201 Created`** — `InternshipDetailsDto` (see shape above), with a `Location`
 response header pointing at `GET /api/internships/{id}`.
+**Response `401 Unauthorized`** — no token, or an expired/invalid one.
+**Response `403 Forbidden`** — valid token, but not a Company (e.g. a Student token).
 
 ### `PUT /api/internships/{id}`
 
@@ -97,6 +163,7 @@ Replaces the editable fields of an existing internship post. Does **not** change
 
 **Response `204 No Content`** — update succeeded.
 **Response `404 Not Found`** — no post exists with that id.
+**Response `401 Unauthorized` / `403 Forbidden`** — same rules as `POST` above.
 
 ### `DELETE /api/internships/{id}`
 
@@ -104,13 +171,14 @@ Permanently deletes an internship post.
 
 **Response `204 No Content`** — deleted.
 **Response `404 Not Found`** — no post exists with that id.
+**Response `401 Unauthorized` / `403 Forbidden`** — same rules as `POST` above.
 
 ---
 
 ## Not Yet Implemented
 
 Endpoints named in `docs/PHASES.md` §11 but not built yet, added in later phases:
-- `Auth` (Phase 6), `Students`/`Companies` profile endpoints (Phase 7)
+- `Students`/`Companies` profile endpoints (Phase 7)
 - `PATCH /api/internships/{id}/open` / `.../close` (Phase 8)
 - `Applications` endpoints (Phase 9–10)
 - `Admin` endpoints (Phase 11)
