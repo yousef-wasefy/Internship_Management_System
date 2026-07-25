@@ -197,3 +197,32 @@ Template for each entry:
   registered). Why `AuthService` methods return `null` for business-rule failures
   instead of throwing - consistent with the pattern already used in `InternshipService`
   (Phase 5), letting the controller translate `null` into the right HTTP status.
+
+## Phase 7 — Student & Company Profiles (2026-07-24)
+- **New concepts:** Looking a row up by a *foreign* key instead of its own primary key -
+  `StudentProfiles.FirstOrDefaultAsync(p => p.UserId == userId)`, not `FindAsync(id)`,
+  because the JWT only ever encodes the logged-in *user's* id, never a profile's own id.
+  Controller-level `[Authorize(Roles = "...")]` (applied once, above the whole class) vs.
+  action-level (applied per-method, as in `InternshipsController`) - the right choice
+  depends on whether *every* action in a controller needs the same restriction
+  (`StudentsController`/`CompaniesController`: yes, every route is a "me" route only that
+  role could ever meaningfully call) or only *some* do (`InternshipsController`: `GET` is
+  public, only the writes need a role). Reusing one service (`ICompanyService`) from two
+  different controllers (`CompaniesController` for self-service, `AdminController` for
+  admin actions) instead of writing a separate, near-duplicate `AdminService` for a
+  single method.
+- **What confused me / how I resolved it:** Nothing new broke this phase - it followed
+  the same controller → service → `DbContext` shape as Phase 5's `InternshipService`
+  almost exactly, which made this the most mechanical phase so far. That *is* the
+  lesson: once the pattern is understood once, repeating it for a new resource
+  (profiles) is mostly copy-adapt-verify, not new problem-solving.
+- **Could now explain in an interview:** Why `UpdateCompanyProfileDto` has no
+  `IsApproved` field at all (not just "ignored if sent") - the same
+  DTO-as-a-boundary reasoning from Phase 5's `CreateInternshipDto` having no `Status`
+  field. Why the admin approve endpoint takes the `CompanyProfile`'s own id in the route
+  (`/api/admin/companies/{id}/approve`) rather than a `UserId` - an admin is acting on
+  "a company" from a future list (Phase 11), not resolving "themselves" the way `/me`
+  endpoints do. Why starting a minimal `AdminController` now (one action) instead of
+  waiting for Phase 11 to create it from scratch avoids the awkward alternative of
+  putting a temporary admin action somewhere unrelated (like `CompaniesController`)
+  just because the "real" controller doesn't exist yet.

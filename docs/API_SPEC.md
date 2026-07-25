@@ -71,6 +71,102 @@ Returns the identity of whoever the bearer token belongs to. **Requires a token.
 
 ---
 
+## Students
+
+Backed by `StudentsController` → `IStudentService` → `AppDbContext`. Both endpoints
+require a valid token with the **Student** role.
+
+### `GET /api/students/me`
+
+Returns the logged-in student's own profile.
+
+**Response `200 OK`** — `StudentProfileDto`
+```json
+{
+  "id": 5,
+  "email": "omar@example.com",
+  "fullName": "Omar Khaled",
+  "university": "Cairo University",
+  "faculty": "Engineering",
+  "major": "Computer Science",
+  "academicYear": "3rd Year",
+  "skills": "C#, SQL, React",
+  "cvUrl": "https://example.com/cv.pdf",
+  "linkedInUrl": "https://linkedin.com/in/omark",
+  "gitHubUrl": "https://github.com/omark",
+  "createdAt": "2026-07-24T19:52:30.189Z",
+  "updatedAt": "2026-07-24T19:52:44.800Z"
+}
+```
+**Response `401 Unauthorized`** — no/invalid token. **Response `403 Forbidden`** — a
+valid token that isn't a Student (e.g. a Company).
+
+### `PUT /api/students/me`
+
+Updates the logged-in student's own profile. `fullName` is required; everything else is
+optional.
+
+**Request body** — `UpdateStudentProfileDto` (same fields as the DTO above, minus `id`,
+`email`, and the timestamps — those aren't editable through this endpoint).
+
+**Response `204 No Content`** — updated. **Response `401`/`403`** — same rules as `GET`.
+
+---
+
+## Companies
+
+Backed by `CompaniesController` → `ICompanyService` → `AppDbContext`. Both endpoints
+require a valid token with the **Company** role.
+
+### `GET /api/companies/me`
+
+Returns the logged-in company's own profile, including its approval status.
+
+**Response `200 OK`** — `CompanyProfileDto`
+```json
+{
+  "id": 7,
+  "email": "hr@acme.com",
+  "companyName": "Acme Corp",
+  "industry": "Software",
+  "websiteUrl": "https://acme.example.com",
+  "description": "We build things",
+  "location": "Cairo, Egypt",
+  "isApproved": false,
+  "createdAt": "2026-07-24T19:52:31.735Z",
+  "updatedAt": "2026-07-24T19:52:44.901Z"
+}
+```
+**Response `401`/`403`** — same rules as the Students endpoints, for the Company role.
+
+### `PUT /api/companies/me`
+
+Updates the logged-in company's own profile. `companyName` is required; everything else
+is optional. **Cannot change `isApproved`** — that field isn't part of the request DTO at
+all; only an admin can approve a company (see below).
+
+**Request body** — `UpdateCompanyProfileDto`.
+
+**Response `204 No Content`** — updated. **Response `401`/`403`** — same rules as `GET`.
+
+---
+
+## Admin *(stub — full module in Phase 11)*
+
+Backed by `AdminController` → `ICompanyService`. Requires a valid token with the
+**Admin** role.
+
+### `PATCH /api/admin/companies/{id}/approve`
+
+Approves a company by its `CompanyProfile` id (not the company's `User` id). Sets
+`IsApproved = true`.
+
+**Response `200 OK`** — the updated `CompanyProfileDto` (`isApproved: true`).
+**Response `404 Not Found`** — no company profile with that id.
+**Response `401`/`403`** — no/invalid token, or a valid token that isn't an Admin.
+
+---
+
 ## Internships
 
 Backed by `InternshipsController` → `IInternshipService` → `AppDbContext`.
@@ -178,7 +274,7 @@ Permanently deletes an internship post.
 ## Not Yet Implemented
 
 Endpoints named in `docs/PHASES.md` §11 but not built yet, added in later phases:
-- `Students`/`Companies` profile endpoints (Phase 7)
 - `PATCH /api/internships/{id}/open` / `.../close` (Phase 8)
 - `Applications` endpoints (Phase 9–10)
-- `Admin` endpoints (Phase 11)
+- The rest of the `Admin` module: dashboard, pending-companies list, reject, user
+  management (Phase 11 — only the approve action exists so far)
