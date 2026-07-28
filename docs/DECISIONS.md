@@ -144,4 +144,27 @@ reason, and the alternative we rejected — so the choices can be explained in a
   real deployment (Phase 17) — flagged here so it isn't forgotten. It is **not** a
   production credential and must never be treated as one.
 
+## D15 — Shared `OperationResult` enum for ownership-checked service methods
+- **Decision:** Service methods that act on a specific resource by id and need to
+  distinguish "doesn't exist" from "exists but you don't own it" from "exists, you own
+  it, but the request breaks a business rule" return a shared
+  `Enums.OperationResult` (`Success`/`NotFound`/`Forbidden`/`ValidationFailed`) — for
+  `Open`/`Close`, paired with a `(Result, ErrorMessage, Dto)` named tuple so a
+  `ValidationFailed` can also carry a human-readable reason. The controller maps each
+  case to the matching HTTP status (404/403/400) with a C# `switch` expression.
+- **Why:** Phase 5–7 got by with a plain `bool`/nullable return because "not found" was
+  the only failure mode. Phase 8 introduced a second, structurally different failure
+  (ownership) plus a third with multiple distinct messages (publishing rules) — a plain
+  bool can no longer tell the controller which HTTP status to return. A shared enum
+  keeps every controller's status-mapping `switch` block looking the same, rather than
+  each controller inventing its own ad-hoc signal.
+- **Rejected:** Throwing custom exceptions for each failure case (works, but turns
+  expected, everyday business outcomes like "not your post" into exception-driven
+  control flow, which is harder to read and slower than a normal return value).
+  Also rejected: a full `Result<T>`/`OneOf<T>` generic wrapper library (more powerful,
+  but more machinery than a 4-case enum needs for a learning project).
+- **Expected reuse:** Phase 9/10's application ownership checks ("a company can only
+  review applications for its own internships," REQUIREMENTS.md CO-7/CO-8) are expected
+  to follow this exact same pattern.
+
 ---

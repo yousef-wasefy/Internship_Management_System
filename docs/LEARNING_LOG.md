@@ -226,3 +226,39 @@ Template for each entry:
   waiting for Phase 11 to create it from scratch avoids the awkward alternative of
   putting a temporary admin action somewhere unrelated (like `CompaniesController`)
   just because the "real" controller doesn't exist yet.
+
+## Phase 8 — Internship Publishing Workflow (2026-07-27)
+- **New concepts:** Modeling a **status workflow** (`Draft → Open → Closed`) as
+  application-layer rules on top of a plain enum column, rather than a database
+  state-machine feature - PostgreSQL doesn't know or enforce that `Closed → Open` is
+  fine but `Cancelled → Open` isn't; that logic lives entirely in
+  `InternshipService.OpenAsync`. The difference between a **404** (resource doesn't
+  exist - or, for the public endpoints this phase, "exists but you're not allowed to
+  know that" is deliberately folded into the same 404) and a **403** (resource exists,
+  you're authenticated, but you specifically aren't allowed to act on *this* one) - and
+  why ownership checks are a 403 case, not a 404 case, when the resource isn't secret
+  (an internship's existence is already public once `Open`). C# **named tuple returns**
+  (`Task<(OperationResult Result, string? ErrorMessage, InternshipDetailsDto? Internship)>`)
+  as a lightweight way to return multiple related values from a method without defining
+  a whole new class for it.
+- **What confused me / how I resolved it:** Realized partway through that making the
+  public listing show only `Open` posts silently broke something: a company would have
+  *no way at all* to see its own Draft posts anymore (the only endpoint that could show
+  them, `GET /api/internships`, now filters them out for everyone, owner included).
+  This wasn't a bug to fix so much as a missing endpoint to add - `GET
+  /api/companies/me/internships`, which turned out to already be named in the original
+  project brief's endpoint list even though no phase had scheduled it yet. A reminder
+  that removing visibility from one endpoint sometimes means a companion endpoint is
+  needed, not just a filter.
+- **Could now explain in an interview:** Why `OperationResult` has four cases instead of
+  reusing the Phase 5/6 nullable-return pattern - once a method can fail for
+  *structurally different reasons* that need *different HTTP status codes* (missing vs.
+  not-yours vs. against-the-rules), a single `null`/`bool` can't carry enough
+  information for the controller to respond correctly. Why the four publishing-rule
+  checks in `OpenAsync` are ordered the way they are (existence → ownership → cancelled
+  → approval → content → deadline) - each check assumes everything before it already
+  passed, so ordering them from "cheapest and most fundamental" to "most specific"
+  avoids doing expensive or confusing work before a simpler check would have already
+  rejected the request. Why `Cancelled` currently has no way to be reached through the
+  API at all, and why that's a known, documented gap rather than something Phase 8 was
+  responsible for fixing (no endpoint in the entire project plan sets it).

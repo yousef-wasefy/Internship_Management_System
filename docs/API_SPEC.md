@@ -149,6 +149,16 @@ all; only an admin can approve a company (see below).
 
 **Response `204 No Content`** — updated. **Response `401`/`403`** — same rules as `GET`.
 
+### `GET /api/companies/me/internships`
+
+Returns **every** internship post owned by the logged-in company, regardless of status
+(`Draft`/`Open`/`Closed`/`Cancelled`) — added in Phase 8, since the public
+`GET /api/internships` listing only shows `Open` posts, so a company needs its own way to
+see (and find the id of) its drafts and closed posts.
+
+**Response `200 OK`** — `InternshipListDto[]` (same shape as the public listing).
+**Response `401`/`403`** — same rules as the other Companies endpoints.
+
 ---
 
 ## Admin *(stub — full module in Phase 11)*
@@ -171,110 +181,148 @@ Approves a company by its `CompanyProfile` id (not the company's `User` id). Set
 
 Backed by `InternshipsController` → `IInternshipService` → `AppDbContext`.
 
-**Authorization:** `GET` endpoints are public. `POST`/`PUT`/`DELETE` require a valid
-token with the **Company** role (`[Authorize(Roles = "Company")]`).
+**Authorization:** `GET` endpoints are public. `POST`/`PUT`/`DELETE`/`PATCH .../open`/
+`PATCH .../close` all require a valid token with the **Company** role, *and* — for
+everything except `POST` — that the token belongs to the company that owns the specific
+post being acted on (Phase 8; see the Ownership rules below).
 
-> **Temporary note (removed after Phase 8):** every `InternshipPost` created right now is
-> still automatically assigned to a single seeded placeholder company (see
-> `Data/SeedData.cs`), **regardless of which company is logged in** — Phase 6 only added
-> the "must be logged in as *some* Company" check, not "assign to *your* company." Phase 8
-> replaces this with the real logged-in company and adds a publishing workflow
-> (`Draft` → `Open` → `Closed`/`Cancelled`) with ownership checks.
+**Status workflow:** `Draft` → `Open` → `Closed`. `Cancelled` exists as a status but there
+is currently no endpoint anywhere in the API that sets it — a known, documented gap (not
+a Phase 8 bug; no phase in the plan adds a cancel action).
+
+**Ownership rules** (`OperationResult.Forbidden` → HTTP `403`):
+- A company can `PUT`/`DELETE`/open/close only posts it owns. Acting on another
+  company's post → `403 Forbidden` (verified live: a second company attempting to close
+  or edit the first company's post both correctly returned 403).
+- `POST` (create) has no ownership check to make — the new post is always owned by
+  whichever company is logged in (resolved via the JWT, not client-supplied).
+
+**Publishing rules** (checked by `PATCH .../open`, `OperationResult.ValidationFailed` →
+HTTP `400` with a `{ "message": "..." }` body):
+1. The owning company must be **approved** (`CompanyProfile.IsApproved == true`) —
+   otherwise: `"Your company must be approved by an admin before you can open internship posts."`
+2. `Title` and `Description` must both be non-empty — otherwise:
+   `"Title and description are required before opening an internship."`
+3. `ApplicationDeadline` must be in the future — otherwise:
+   `"The application deadline must be in the future to open this internship."`
+4. A `Cancelled` post can never be reopened — otherwise:
+   `"A cancelled internship cannot be reopened."`
+
+**Closing rules** (`PATCH .../close`): only a post whose current status is `Open` can be
+closed — otherwise `400` with `"Only an open internship can be closed."`
 
 ### `GET /api/internships`
 
-Returns a summary list of all internship posts (no filtering yet — added in Phase 12).
+Returns a summary list of internship posts — **only `Open` ones** (Phase 8; students
+should never see another company's drafts). Public, no token required.
 
 **Response `200 OK`** — `InternshipListDto[]`
 ```json
 [
   {
-    "id": 2,
-    "title": "Backend Developer Intern",
-    "location": "Cairo, Egypt",
+    "id": 7,
+    "title": "Backend Intern",
+    "location": null,
     "workMode": "Remote",
     "applicationDeadline": "2026-12-31T00:00:00Z",
-    "status": "Draft",
-    "companyName": "Placeholder Company (temporary - see Phase 8)"
+    "status": "Open",
+    "companyName": "Company A"
   }
 ]
 ```
 
 ### `GET /api/internships/{id}`
 
-Returns the full details of a single internship post.
+Returns the full details of a single internship post — **only if it's `Open`** (Phase 8;
+a direct id lookup can no longer reveal an unpublished draft). Public, no token required.
 
 **Response `200 OK`** — `InternshipDetailsDto`
 ```json
 {
-  "id": 2,
-  "title": "Backend Developer Intern",
-  "description": "Work on our ASP.NET Core API",
-  "requirements": "C#, SQL basics",
-  "responsibilities": "Build REST endpoints",
-  "location": "Cairo, Egypt",
+  "id": 7,
+  "title": "Backend Intern",
+  "description": "Work on APIs",
+  "requirements": null,
+  "responsibilities": null,
+  "location": null,
   "workMode": "Remote",
-  "duration": "3 months",
+  "duration": null,
   "applicationDeadline": "2026-12-31T00:00:00Z",
-  "status": "Draft",
-  "companyName": "Placeholder Company (temporary - see Phase 8)",
-  "createdAt": "2026-07-22T16:12:56.972Z",
-  "updatedAt": "2026-07-22T16:12:56.972Z"
+  "status": "Open",
+  "companyName": "Company A",
+  "createdAt": "2026-07-27T20:39:17.209Z",
+  "updatedAt": "2026-07-27T20:39:35.448Z"
 }
 ```
-**Response `404 Not Found`** — no post exists with that id.
+**Response `404 Not Found`** — no post with that id, **or it exists but isn't `Open`**
+(the two cases are indistinguishable on purpose — a company's own listing, below, is
+where the real status is visible).
 
 ### `POST /api/internships`
 
-Creates a new internship post. Always starts as `Status: "Draft"`.
+Creates a new internship post, owned by the logged-in company. Always starts as
+`Status: "Draft"` — use `PATCH .../open` to publish it.
 
 **Request body** — `CreateInternshipDto`
 ```json
 {
-  "title": "Backend Developer Intern",
-  "description": "Work on our ASP.NET Core API",
-  "requirements": "C#, SQL basics",
-  "responsibilities": "Build REST endpoints",
-  "location": "Cairo, Egypt",
+  "title": "Backend Intern",
+  "description": "Work on APIs",
   "workMode": "Remote",
-  "duration": "3 months",
   "applicationDeadline": "2026-12-31T00:00:00Z"
 }
 ```
-`title` is required; every other field is optional. `workMode` must be one of
-`"Onsite"`, `"Remote"`, `"Hybrid"`. `applicationDeadline` should be an ISO-8601 date-time;
-if no timezone offset is given, it's treated as UTC.
+`title` is required; every other field is optional (though `description` becomes
+effectively required before the post can be opened — see Publishing rules above).
+`workMode` must be one of `"Onsite"`, `"Remote"`, `"Hybrid"`. `applicationDeadline`
+should be an ISO-8601 date-time; if no timezone offset is given, it's treated as UTC.
 
-**Response `201 Created`** — `InternshipDetailsDto` (see shape above), with a `Location`
-response header pointing at `GET /api/internships/{id}`.
-**Response `401 Unauthorized`** — no token, or an expired/invalid one.
-**Response `403 Forbidden`** — valid token, but not a Company (e.g. a Student token).
+**Response `201 Created`** — `InternshipDetailsDto`, `Location` header → `GET /api/internships/{id}`
+(note: that `GET` will 404 until the post is opened — it's a `Draft`).
+**Response `401`/`403`** — no/invalid token, or a valid token that isn't a Company.
 
 ### `PUT /api/internships/{id}`
 
 Replaces the editable fields of an existing internship post. Does **not** change
-`Status` — that's handled by dedicated endpoints in Phase 8.
+`Status`. **Owner only.**
 
 **Request body** — `UpdateInternshipDto` (same shape as `CreateInternshipDto`).
 
-**Response `204 No Content`** — update succeeded.
-**Response `404 Not Found`** — no post exists with that id.
-**Response `401 Unauthorized` / `403 Forbidden`** — same rules as `POST` above.
+**Response `204 No Content`** — updated.
+**Response `404 Not Found`** — no post with that id.
+**Response `403 Forbidden`** — valid Company token, but not the post's owner.
+**Response `401 Unauthorized`** — no/invalid token.
 
 ### `DELETE /api/internships/{id}`
 
-Permanently deletes an internship post.
+Permanently deletes an internship post. **Owner only.**
 
 **Response `204 No Content`** — deleted.
-**Response `404 Not Found`** — no post exists with that id.
-**Response `401 Unauthorized` / `403 Forbidden`** — same rules as `POST` above.
+**Response `404`/`403`/`401`** — same rules as `PUT` above.
+
+### `PATCH /api/internships/{id}/open`
+
+Publishes a `Draft` (or reopens a `Closed`) post, subject to the Publishing rules above.
+**Owner only.**
+
+**Response `200 OK`** — the updated `InternshipDetailsDto` (`status: "Open"`).
+**Response `400 Bad Request`** — `{ "message": "..." }`, one of the four Publishing rule
+messages above.
+**Response `404`/`403`/`401`** — same rules as `PUT`.
+
+### `PATCH /api/internships/{id}/close`
+
+Closes an `Open` post. **Owner only.**
+
+**Response `200 OK`** — the updated `InternshipDetailsDto` (`status: "Closed"`).
+**Response `400 Bad Request`** — `{ "message": "Only an open internship can be closed." }`.
+**Response `404`/`403`/`401`** — same rules as `PUT`.
 
 ---
 
 ## Not Yet Implemented
 
 Endpoints named in `docs/PHASES.md` §11 but not built yet, added in later phases:
-- `PATCH /api/internships/{id}/open` / `.../close` (Phase 8)
 - `Applications` endpoints (Phase 9–10)
 - The rest of the `Admin` module: dashboard, pending-companies list, reject, user
   management (Phase 11 — only the approve action exists so far)

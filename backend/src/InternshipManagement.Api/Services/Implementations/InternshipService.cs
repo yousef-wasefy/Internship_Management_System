@@ -18,8 +18,10 @@ public class InternshipService : IInternshipService
 
     public async Task<List<InternshipListDto>> GetAllAsync()
     {
+        // Public listing - only Open posts are visible to students (REQUIREMENTS.md §5).
         var posts = await _context.InternshipPosts
             .Include(p => p.Company)
+            .Where(p => p.Status == InternshipStatus.Open)
             .OrderByDescending(p => p.CreatedAt)
             .ToListAsync();
 
@@ -30,17 +32,28 @@ public class InternshipService : IInternshipService
     {
         var post = await _context.InternshipPosts
             .Include(p => p.Company)
-            .FirstOrDefaultAsync(p => p.Id == id);
+            .FirstOrDefaultAsync(p => p.Id == id && p.Status == InternshipStatus.Open);
 
         return post is null ? null : ToDetailsDto(post);
     }
 
-    public async Task<InternshipDetailsDto> CreateAsync(CreateInternshipDto dto)
+    public async Task<List<InternshipListDto>> GetByCompanyUserIdAsync(int userId)
     {
-        // TEMPORARY: every post is assigned to the single seeded placeholder company
-        // until Phase 6/7 add real authentication and Phase 8 wires posts to the
-        // logged-in company instead (see Data/SeedData.cs).
-        var company = await _context.CompanyProfiles.FirstAsync();
+        var posts = await _context.InternshipPosts
+            .Include(p => p.Company)
+            .Where(p => p.Company.UserId == userId)
+            .OrderByDescending(p => p.CreatedAt)
+            .ToListAsync();
+
+        return posts.Select(ToListDto).ToList();
+    }
+
+    public async Task<InternshipDetailsDto> CreateAsync(CreateInternshipDto dto, int userId)
+    {
+        // Every Company-role user has exactly one CompanyProfile, created atomically at
+        // registration (Phase 6) - FirstAsync throws if that invariant is ever broken,
+        // which is preferable to silently guessing which company "owns" a new post.
+        var company = await _context.CompanyProfiles.FirstAsync(c => c.UserId == userId);
 
         var now = DateTime.UtcNow;
         var post = new InternshipPost
@@ -65,12 +78,17 @@ public class InternshipService : IInternshipService
         return ToDetailsDto(post);
     }
 
-    public async Task<bool> UpdateAsync(int id, UpdateInternshipDto dto)
+    public async Task<OperationResult> UpdateAsync(int id, UpdateInternshipDto dto, int userId)
     {
-        var post = await _context.InternshipPosts.FindAsync(id);
+        var post = await _context.InternshipPosts.Include(p => p.Company).FirstOrDefaultAsync(p => p.Id == id);
         if (post is null)
         {
-            return false;
+            return OperationResult.NotFound;
+        }
+
+        if (post.Company.UserId != userId)
+        {
+            return OperationResult.Forbidden; // REQUIREMENTS.md CO-2: only the owner can edit
         }
 
         post.Title = dto.Title;
@@ -84,26 +102,99 @@ public class InternshipService : IInternshipService
         post.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
-        return true;
+        return OperationResult.Success;
     }
 
-    public async Task<bool> DeleteAsync(int id)
+    public async Task<OperationResult> DeleteAsync(int id, int userId)
     {
-        var post = await _context.InternshipPosts.FindAsync(id);
+        var post = await _context.InternshipPosts.Include(p => p.Company).FirstOrDefaultAsync(p => p.Id == id);
         if (post is null)
         {
-            return false;
+            return OperationResult.NotFound;
+        }
+
+        if (post.Company.UserId != userId)
+        {
+            return OperationResult.Forbidden;
         }
 
         _context.InternshipPosts.Remove(post);
         await _context.SaveChangesAsync();
-        return true;
+        return OperationResult.Success;
+    }
+
+    public async Task<(OperationResult Result, string? ErrorMessage, InternshipDetailsDto? Internship)> OpenAsync(int id, int userId)
+    {
+        var post = await _context.InternshipPosts.Include(p => p.Company).FirstOrDefaultAsync(p => p.Id == id);
+        if (post is null)
+        {
+            return (OperationResult.NotFound, null, null);
+        }
+
+        if (post.Company.UserId != userId)
+        {
+            return (OperationResult.Forbidden, null, null);
+        }
+
+        if (post.Status == InternshipStatus.Cancelled)
+        {
+            return (OperationResult.ValidationFailed, "A cancelled internship cannot be reopened.", null);
+        }
+
+        // Only an approved company may publish (REQUIREMENTS.md CO-1 / §7.2 rule 1).
+        if (!post.Company.IsApproved)
+        {
+            return (OperationResult.ValidationFailed,
+                "Your company must be approved by an admin before you can open internship posts.", null);
+        }
+
+        if (string.IsNullOrWhiteSpace(post.Title) || string.IsNullOrWhiteSpace(post.Description))
+        {
+            return (OperationResult.ValidationFailed,
+                "Title and description are required before opening an internship.", null);
+        }
+
+        if (post.ApplicationDeadline <= DateTime.UtcNow)
+        {
+            return (OperationResult.ValidationFailed,
+                "The application deadline must be in the future to open this internship.", null);
+        }
+
+        post.Status = InternshipStatus.Open;
+        post.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        return (OperationResult.Success, null, ToDetailsDto(post));
+    }
+
+    public async Task<(OperationResult Result, string? ErrorMessage, InternshipDetailsDto? Internship)> CloseAsync(int id, int userId)
+    {
+        var post = await _context.InternshipPosts.Include(p => p.Company).FirstOrDefaultAsync(p => p.Id == id);
+        if (post is null)
+        {
+            return (OperationResult.NotFound, null, null);
+        }
+
+        if (post.Company.UserId != userId)
+        {
+            return (OperationResult.Forbidden, null, null);
+        }
+
+        if (post.Status != InternshipStatus.Open)
+        {
+            return (OperationResult.ValidationFailed, "Only an open internship can be closed.", null);
+        }
+
+        post.Status = InternshipStatus.Closed;
+        post.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        return (OperationResult.Success, null, ToDetailsDto(post));
     }
 
     // Npgsql requires "timestamp with time zone" columns to receive a DateTime whose
-    // Kind is explicitly Utc. A client-supplied date with no timezone offset comes in
-    // as Kind=Unspecified, which Npgsql would otherwise reject at save time - this
-    // treats such values as UTC instead of throwing.
+    // Kind is explicitly Utc - client-supplied dates without a timezone offset come in
+    // as Unspecified, so this treats them as UTC rather than throwing at save time.
     private static DateTime AsUtc(DateTime value) =>
         value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);
 
