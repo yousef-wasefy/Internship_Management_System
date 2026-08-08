@@ -262,3 +262,38 @@ Template for each entry:
   rejected the request. Why `Cancelled` currently has no way to be reached through the
   API at all, and why that's a known, documented gap rather than something Phase 8 was
   responsible for fixing (no endpoint in the entire project plan sets it).
+
+## Phase 9 — Student Application Workflow (2026-08-07)
+- **New concepts:** **Defense in depth** in practice, not just in theory - the duplicate-
+  application rule is checked *twice*: a friendly `AnyAsync` pre-check (for the normal
+  case, giving a clean 400 with a clear message) *and* a `catch` around `SaveChangesAsync`
+  for the specific Postgres unique-violation error code (`23505`, via
+  `PostgresErrorCodes.UniqueViolation`), which is what actually stops a duplicate if two
+  requests from the same student race each other and both pass the pre-check before
+  either commits. A rule that depends on **wall-clock time, not just state** - "the
+  deadline has passed" isn't reflected anywhere in the `Status` column (nothing
+  auto-closes a post), so it has to be checked as its own separate condition
+  (`ApplicationDeadline <= DateTime.UtcNow`) every time, not inferred from `Status`.
+  Why `POST /api/internships/{id}/apply` deliberately returns `201` with **no `Location`
+  header** - there's no single-resource `GET` endpoint for an application yet to point
+  the header at, and fabricating one that doesn't work would be worse than omitting it.
+- **What confused me / how I resolved it:** Needed to test "student cannot apply after
+  the deadline," but the API itself has no way to *create* that situation - `OpenAsync`
+  (Phase 8) refuses to open a post whose deadline is already in the past, so you can
+  never reach "an Open post past its deadline" purely through normal API calls in a
+  single test run. Resolved by directly updating the row's `ApplicationDeadline` via
+  `psql` to simulate time passing, then calling `apply` through the real API - a
+  reasonable, common technique for testing time-dependent rules without literally
+  waiting for a deadline to elapse.
+- **Could now explain in an interview:** Why "not open" (Draft/Closed/Cancelled) and
+  "deadline passed" are two *separate* checks even though a caller might describe both
+  as "I can't apply" - they're independent facts about the internship that can each be
+  true without the other. Why the duplicate check happens *after* the deadline check in
+  `ApplyAsync`, not before - each check assumes the ones before it already passed
+  (same "cheapest/most fundamental first" ordering principle from Phase 8), so a student
+  re-applying to an internship whose deadline just passed gets the deadline message, not
+  the duplicate message - the more fundamentally-blocking reason wins. Why `Forbidden`
+  only applies to *withdraw* (a student acting on someone else's application) and not to
+  *apply* (there's no ownership concept to violate when creating your own new
+  application) - `OperationResult.Forbidden` is only meaningful where an existing
+  resource has an owner to check against.

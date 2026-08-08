@@ -318,11 +318,79 @@ Closes an `Open` post. **Owner only.**
 **Response `400 Bad Request`** — `{ "message": "Only an open internship can be closed." }`.
 **Response `404`/`403`/`401`** — same rules as `PUT`.
 
+### `POST /api/internships/{id}/apply`
+
+Applies to an internship as the logged-in student. Requires a valid token with the
+**Student** role.
+
+**Request body** — `ApplyToInternshipDto` (both fields optional)
+```json
+{ "coverLetter": "I'm interested!", "cvUrl": "https://example.com/cv.pdf" }
+```
+**Response `201 Created`** — the new `ApplicationDto` (`status: "Pending"`). No `Location`
+header — there's no `GET /api/applications/{id}` endpoint yet to point at (see
+"Not Yet Implemented" below); use `GET /api/applications/my` instead.
+**Response `404 Not Found`** — no internship with that id.
+**Response `400 Bad Request`** — `{ "message": "..." }`, one of:
+  - `"This internship is not open for applications."` — the post is `Draft`, `Closed`,
+    or `Cancelled` (deliberately the same message for all three — which one it is isn't
+    the student's business).
+  - `"The application deadline for this internship has passed."` — checked separately
+    from `Status`, since nothing automatically closes a post once its deadline passes.
+  - `"You have already applied to this internship."` — enforced twice: a friendly
+    pre-check, backed by the database's own composite unique constraint (Phase 4) as the
+    final word, in case of a race between two near-simultaneous requests.
+**Response `401`/`403`** — no/invalid token, or a valid token that isn't a Student.
+
+---
+
+## Applications
+
+Backed by `ApplicationsController` → `IApplicationService` → `AppDbContext`. Both
+endpoints require a valid token with the **Student** role.
+
+### `GET /api/applications/my`
+
+Returns every application the logged-in student has ever submitted, most recent first,
+regardless of status.
+
+**Response `200 OK`** — `ApplicationDto[]`
+```json
+[
+  {
+    "id": 3,
+    "internshipPostId": 11,
+    "internshipTitle": "Internship X",
+    "companyName": "Company C",
+    "coverLetter": "I'm interested!",
+    "cvUrl": null,
+    "status": "Pending",
+    "appliedAt": "2026-08-07T18:13:14.071Z",
+    "updatedAt": "2026-08-07T18:13:14.071Z",
+    "reviewedAt": null,
+    "companyNotes": null
+  }
+]
+```
+
+### `PATCH /api/applications/{id}/withdraw`
+
+Withdraws the logged-in student's own application. **Owner only, and only while
+`Pending`.**
+
+**Response `200 OK`** — the updated `ApplicationDto` (`status: "Withdrawn"`).
+**Response `404 Not Found`** — no application with that id.
+**Response `403 Forbidden`** — a valid Student token, but not this application's owner.
+**Response `400 Bad Request`** — `{ "message": "Only a pending application can be withdrawn." }`
+— e.g. it was already withdrawn, or a company already shortlisted/accepted/rejected it.
+**Response `401 Unauthorized`** — no/invalid token.
+
 ---
 
 ## Not Yet Implemented
 
 Endpoints named in `docs/PHASES.md` §11 but not built yet, added in later phases:
-- `Applications` endpoints (Phase 9–10)
+- `GET /api/applications/{id}` and `PATCH /api/applications/{id}/status` (company review
+  — Phase 10)
 - The rest of the `Admin` module: dashboard, pending-companies list, reject, user
   management (Phase 11 — only the approve action exists so far)

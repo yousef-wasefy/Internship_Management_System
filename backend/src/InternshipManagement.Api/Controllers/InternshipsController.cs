@@ -1,3 +1,4 @@
+using InternshipManagement.Api.DTOs.Applications;
 using InternshipManagement.Api.DTOs.Internships;
 using InternshipManagement.Api.Enums;
 using InternshipManagement.Api.Helpers;
@@ -14,11 +15,16 @@ namespace InternshipManagement.Api.Controllers;
 public class InternshipsController : ControllerBase
 {
     private readonly IInternshipService _internshipService;
+    private readonly IApplicationService _applicationService;
     private readonly ICurrentUserAccessor _currentUserAccessor;
 
-    public InternshipsController(IInternshipService internshipService, ICurrentUserAccessor currentUserAccessor)
+    public InternshipsController(
+        IInternshipService internshipService,
+        IApplicationService applicationService,
+        ICurrentUserAccessor currentUserAccessor)
     {
         _internshipService = internshipService;
+        _applicationService = applicationService;
         _currentUserAccessor = currentUserAccessor;
     }
 
@@ -125,6 +131,28 @@ public class InternshipsController : ControllerBase
             OperationResult.Forbidden => Forbid(),
             OperationResult.ValidationFailed => BadRequest(new { message = error }),
             _ => Ok(internship)
+        };
+    }
+
+    [HttpPost("{id:int}/apply")]
+    [Authorize(Roles = "Student")]
+    public async Task<ActionResult<ApplicationDto>> Apply(int id, ApplyToInternshipDto dto)
+    {
+        var userId = _currentUserAccessor.GetUserId(User);
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var (result, error, application) = await _applicationService.ApplyAsync(id, userId.Value, dto);
+        return result switch
+        {
+            OperationResult.NotFound => NotFound(),
+            OperationResult.ValidationFailed => BadRequest(new { message = error }),
+            // 201 with no Location header: there's no GET /api/applications/{id} endpoint
+            // yet to point at (see docs/API_SPEC.md), so the created resource is
+            // returned directly instead of linked.
+            _ => StatusCode(StatusCodes.Status201Created, application)
         };
     }
 }
