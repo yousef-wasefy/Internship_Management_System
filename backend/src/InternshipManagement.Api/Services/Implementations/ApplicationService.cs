@@ -130,6 +130,113 @@ public class ApplicationService : IApplicationService
         return (OperationResult.Success, null, ToDto(application));
     }
 
+    public async Task<List<ApplicantDto>> GetApplicantsForCompanyAsync(int userId)
+    {
+        var applications = await _context.InternshipApplications
+            .Include(a => a.Student).ThenInclude(s => s.User)
+            .Include(a => a.InternshipPost)
+            .Where(a => a.InternshipPost.Company.UserId == userId)
+            .OrderByDescending(a => a.AppliedAt)
+            .ToListAsync();
+
+        return applications.Select(ToApplicantDto).ToList();
+    }
+
+    public async Task<(OperationResult Result, string? ErrorMessage, List<ApplicantDto>? Applicants)> GetApplicantsForInternshipAsync(
+        int internshipPostId, int userId)
+    {
+        var internship = await _context.InternshipPosts.Include(p => p.Company).FirstOrDefaultAsync(p => p.Id == internshipPostId);
+        if (internship is null)
+        {
+            return (OperationResult.NotFound, null, null);
+        }
+
+        if (internship.Company.UserId != userId)
+        {
+            return (OperationResult.Forbidden, null, null); // REQUIREMENTS.md CO-7: only for own internships
+        }
+
+        var applications = await _context.InternshipApplications
+            .Include(a => a.Student).ThenInclude(s => s.User)
+            .Include(a => a.InternshipPost)
+            .Where(a => a.InternshipPostId == internshipPostId)
+            .OrderByDescending(a => a.AppliedAt)
+            .ToListAsync();
+
+        return (OperationResult.Success, null, applications.Select(ToApplicantDto).ToList());
+    }
+
+    public async Task<(OperationResult Result, string? ErrorMessage, ApplicantDto? Applicant)> UpdateStatusAsync(
+        int applicationId, int userId, UpdateApplicationStatusDto dto)
+    {
+        var application = await _context.InternshipApplications
+            .Include(a => a.Student).ThenInclude(s => s.User)
+            .Include(a => a.InternshipPost).ThenInclude(p => p.Company)
+            .FirstOrDefaultAsync(a => a.Id == applicationId);
+
+        if (application is null)
+        {
+            return (OperationResult.NotFound, null, null);
+        }
+
+        if (application.InternshipPost.Company.UserId != userId)
+        {
+            return (OperationResult.Forbidden, null, null); // REQUIREMENTS.md CO-8: only for own internships
+        }
+
+        // Checked before the requested status value itself - a withdrawn application is
+        // completely off-limits regardless of what the company tried to set it to
+        // (REQUIREMENTS.md §4.2 rule 5).
+        if (application.Status == ApplicationStatus.Withdrawn)
+        {
+            return (OperationResult.ValidationFailed, "A withdrawn application cannot be reviewed.", null);
+        }
+
+        // A company may only move an application to one of these three statuses - not
+        // back to Pending, and not to Withdrawn (that's a student-only action, Phase 9).
+        if (dto.Status is not (ApplicationStatus.Shortlisted or ApplicationStatus.Accepted or ApplicationStatus.Rejected))
+        {
+            return (OperationResult.ValidationFailed, "Status must be Shortlisted, Accepted, or Rejected.", null);
+        }
+
+        application.Status = dto.Status;
+
+        // Only overwrite existing notes if new ones were actually provided - a company
+        // accepting an application shouldn't accidentally erase a note it left when
+        // shortlisting it earlier.
+        if (dto.CompanyNotes is not null)
+        {
+            application.CompanyNotes = dto.CompanyNotes;
+        }
+
+        application.ReviewedAt = DateTime.UtcNow;
+        application.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        return (OperationResult.Success, null, ToApplicantDto(application));
+    }
+
+    private static ApplicantDto ToApplicantDto(InternshipApplication application) => new()
+    {
+        Id = application.Id,
+        InternshipPostId = application.InternshipPostId,
+        InternshipTitle = application.InternshipPost.Title,
+        StudentFullName = application.Student.FullName,
+        StudentEmail = application.Student.User.Email,
+        StudentUniversity = application.Student.University,
+        StudentMajor = application.Student.Major,
+        StudentSkills = application.Student.Skills,
+        StudentLinkedInUrl = application.Student.LinkedInUrl,
+        StudentGitHubUrl = application.Student.GitHubUrl,
+        CoverLetter = application.CoverLetter,
+        CVUrl = application.CVUrl,
+        Status = application.Status,
+        AppliedAt = application.AppliedAt,
+        UpdatedAt = application.UpdatedAt,
+        ReviewedAt = application.ReviewedAt,
+        CompanyNotes = application.CompanyNotes
+    };
+
     private static ApplicationDto ToDto(InternshipApplication application) => new()
     {
         Id = application.Id,

@@ -1,3 +1,4 @@
+using InternshipManagement.Api.DTOs.Applications;
 using InternshipManagement.Api.DTOs.Companies;
 using InternshipManagement.Api.DTOs.Internships;
 using InternshipManagement.Api.Helpers;
@@ -14,15 +15,18 @@ public class CompaniesController : ControllerBase
 {
     private readonly ICompanyService _companyService;
     private readonly IInternshipService _internshipService;
+    private readonly IApplicationService _applicationService;
     private readonly ICurrentUserAccessor _currentUserAccessor;
 
     public CompaniesController(
         ICompanyService companyService,
         IInternshipService internshipService,
+        IApplicationService applicationService,
         ICurrentUserAccessor currentUserAccessor)
     {
         _companyService = companyService;
         _internshipService = internshipService;
+        _applicationService = applicationService;
         _currentUserAccessor = currentUserAccessor;
     }
 
@@ -65,5 +69,19 @@ public class CompaniesController : ControllerBase
 
         var internships = await _internshipService.GetByCompanyUserIdAsync(userId.Value);
         return Ok(internships);
+    }
+
+    // Every applicant across all of the company's internships, in one list.
+    [HttpGet("me/applications")]
+    public async Task<ActionResult<List<ApplicantDto>>> GetMyApplications()
+    {
+        var userId = _currentUserAccessor.GetUserId(User);
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var applicants = await _applicationService.GetApplicantsForCompanyAsync(userId.Value);
+        return Ok(applicants);
     }
 }

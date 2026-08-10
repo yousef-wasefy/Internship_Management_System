@@ -115,8 +115,11 @@ optional.
 
 ## Companies
 
-Backed by `CompaniesController` → `ICompanyService` → `AppDbContext`. Both endpoints
-require a valid token with the **Company** role.
+Backed by `CompaniesController` → `ICompanyService`/`IInternshipService`/
+`IApplicationService` → `AppDbContext`. Every endpoint requires a valid token with the
+**Company** role. (One more endpoint on this controller, `GET /me/applications`, is
+documented under "Company applicant views" further below, grouped with the other
+applicant-review endpoints rather than repeated here.)
 
 ### `GET /api/companies/me`
 
@@ -342,17 +345,27 @@ header — there's no `GET /api/applications/{id}` endpoint yet to point at (see
     final word, in case of a race between two near-simultaneous requests.
 **Response `401`/`403`** — no/invalid token, or a valid token that isn't a Student.
 
+### `GET /api/internships/{id}/applications` *(Phase 10)*
+
+Returns every applicant for one specific internship, from the owning company's
+perspective. **Owner only.**
+
+**Response `200 OK`** — `ApplicantDto[]` (see shape under Applications below).
+**Response `404`/`403`/`401`** — same rules as `PUT /api/internships/{id}`.
+
 ---
 
 ## Applications
 
-Backed by `ApplicationsController` → `IApplicationService` → `AppDbContext`. Both
-endpoints require a valid token with the **Student** role.
+Backed by `ApplicationsController` → `IApplicationService` → `AppDbContext`.
+`GET /my` and `PATCH .../withdraw` require the **Student** role; `PATCH .../status`
+requires the **Company** role — this controller has no controller-level `[Authorize]`,
+since (unlike `StudentsController`/`CompaniesController`) it mixes roles across actions.
 
 ### `GET /api/applications/my`
 
 Returns every application the logged-in student has ever submitted, most recent first,
-regardless of status.
+regardless of status. **Student role.**
 
 **Response `200 OK`** — `ApplicationDto[]`
 ```json
@@ -375,8 +388,8 @@ regardless of status.
 
 ### `PATCH /api/applications/{id}/withdraw`
 
-Withdraws the logged-in student's own application. **Owner only, and only while
-`Pending`.**
+Withdraws the logged-in student's own application. **Student role, owner only, and only
+while `Pending`.**
 
 **Response `200 OK`** — the updated `ApplicationDto` (`status: "Withdrawn"`).
 **Response `404 Not Found`** — no application with that id.
@@ -385,12 +398,70 @@ Withdraws the logged-in student's own application. **Owner only, and only while
 — e.g. it was already withdrawn, or a company already shortlisted/accepted/rejected it.
 **Response `401 Unauthorized`** — no/invalid token.
 
+### `PATCH /api/applications/{id}/status` *(Phase 10)*
+
+Lets the owning company shortlist, accept, or reject an application. **Company role,
+owner of the application's internship only.**
+
+**Request body** — `UpdateApplicationStatusDto`
+```json
+{ "status": "Shortlisted", "companyNotes": "Strong candidate, schedule interview" }
+```
+`status` must be `"Shortlisted"`, `"Accepted"`, or `"Rejected"` — not `"Pending"` (the
+default) or `"Withdrawn"` (student-only, via the endpoint above). `companyNotes` is
+optional; **if omitted, any existing note is left untouched** rather than being cleared
+(so shortlisting with a note, then later accepting without resupplying it, doesn't erase
+the note).
+
+**Response `200 OK`** — the updated `ApplicantDto`:
+```json
+{
+  "id": 6,
+  "internshipPostId": 16,
+  "internshipTitle": "Data Intern",
+  "studentFullName": "Applicant One",
+  "studentEmail": "p10student1@example.com",
+  "studentUniversity": null,
+  "studentMajor": null,
+  "studentSkills": null,
+  "studentLinkedInUrl": null,
+  "studentGitHubUrl": null,
+  "coverLetter": "Applicant 1 cover letter",
+  "cvUrl": null,
+  "status": "Shortlisted",
+  "appliedAt": "2026-08-14T20:05:00.000Z",
+  "updatedAt": "2026-08-14T20:06:00.000Z",
+  "reviewedAt": "2026-08-14T20:06:00.000Z",
+  "companyNotes": "Strong candidate, schedule interview"
+}
+```
+**Response `404 Not Found`** — no application with that id.
+**Response `403 Forbidden`** — a valid Company token, but not the owner of this
+application's internship.
+**Response `400 Bad Request`** — `{ "message": "..." }`, one of:
+  - `"A withdrawn application cannot be reviewed."` — checked before the requested
+    status value, since a withdrawn application is off-limits regardless of what it was
+    being changed to (REQUIREMENTS.md §4.2 rule 5).
+  - `"Status must be Shortlisted, Accepted, or Rejected."`
+**Response `401 Unauthorized`** — no/invalid token.
+
+---
+
+## Company applicant views *(Phase 10)*
+
+Two more endpoints, added alongside the status update above:
+
+- **`GET /api/companies/me/applications`** — every applicant across *all* of the
+  logged-in company's internships, most recent first. **Company role.**
+  Response: `200 OK` — `ApplicantDto[]`.
+- **`GET /api/internships/{id}/applications`** — documented above, under Internships.
+
 ---
 
 ## Not Yet Implemented
 
 Endpoints named in `docs/PHASES.md` §11 but not built yet, added in later phases:
-- `GET /api/applications/{id}` and `PATCH /api/applications/{id}/status` (company review
-  — Phase 10)
+- `GET /api/applications/{id}` (a single-application detail view — `GET /my` and the two
+  company-facing listing endpoints above have covered every need so far)
 - The rest of the `Admin` module: dashboard, pending-companies list, reject, user
   management (Phase 11 — only the approve action exists so far)

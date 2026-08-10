@@ -155,4 +155,23 @@ public class InternshipsController : ControllerBase
             _ => StatusCode(StatusCodes.Status201Created, application)
         };
     }
+
+    [HttpGet("{id:int}/applications")]
+    [Authorize(Roles = "Company")]
+    public async Task<ActionResult<List<ApplicantDto>>> GetApplicants(int id)
+    {
+        var userId = _currentUserAccessor.GetUserId(User);
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var (result, error, applicants) = await _applicationService.GetApplicantsForInternshipAsync(id, userId.Value);
+        return result switch
+        {
+            OperationResult.NotFound => NotFound(),
+            OperationResult.Forbidden => Forbid(),
+            _ => Ok(applicants)
+        };
+    }
 }

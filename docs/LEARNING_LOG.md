@@ -297,3 +297,40 @@ Template for each entry:
   *apply* (there's no ownership concept to violate when creating your own new
   application) - `OperationResult.Forbidden` is only meaningful where an existing
   resource has an owner to check against.
+
+## Phase 10 — Company Application Review (2026-08-14)
+- **New concepts:** The same underlying data (an `InternshipApplication`) needs a
+  genuinely **different DTO shape depending on who's looking at it** -
+  `ApplicationDto` (Phase 9, the student's own view: which internship, what status) vs.
+  `ApplicantDto` (this phase, the company's view: *who applied* - name, email,
+  university, skills - since a company reviewing candidates cares who the person is, not
+  just that "an application" exists). **Partial-update semantics on a single field**:
+  `UpdateApplicationStatusDto.CompanyNotes` only overwrites the stored note when a new
+  one is actually provided (`if (dto.CompanyNotes is not null)`), so shortlisting with a
+  note and later accepting without repeating it doesn't silently erase the earlier note
+  - a small but real departure from every previous `Update*` method in the project,
+  which always overwrote every field unconditionally.
+- **What confused me / how I resolved it:** Nothing broke this phase - by this point the
+  ownership-check-then-business-rule shape (`NotFound` → `Forbidden` →
+  `ValidationFailed` → `Success`) from Phase 8/9 applied directly to
+  `UpdateStatusAsync`, just checked through a different path
+  (`application.InternshipPost.Company.UserId`, not `application.Student.UserId`). The
+  one genuinely new decision was ordering: check "is this application withdrawn"
+  *before* checking "is the requested status value even legal" - because a withdrawn
+  application should be rejected the same way no matter what status was requested,
+  rather than sometimes returning a "withdrawn" message and sometimes an "invalid
+  status" message depending on what the caller happened to send.
+- **Could now explain in an interview:** Why `ApplicationsController` has **no**
+  controller-level `[Authorize]`, unlike `StudentsController`/`CompaniesController` -
+  because this is the first controller whose actions genuinely need *different* roles
+  (`GetMy`/`Withdraw` need Student, `UpdateStatus` needs Company), so the restriction has
+  to live on each action individually. Why `GET /api/companies/me/applications` and
+  `GET /api/internships/{id}/applications` are two different endpoints instead of one -
+  the first answers "show me everything, across all my posts" (a dashboard-style view,
+  no id needed since it's implicitly "mine"), the second answers "show me applicants for
+  *this specific* post" (needs an id, and therefore needs an ownership check the first
+  one doesn't). Why `OperationResult.Forbidden` for `GetApplicantsForInternshipAsync`
+  checks the *internship's* owner, while `UpdateStatusAsync`'s check reaches the same
+  owner through the *application's* `InternshipPost.Company.UserId` - two different
+  navigation paths arriving at the same ownership fact, because the two methods start
+  from different resources (an internship id vs. an application id).
