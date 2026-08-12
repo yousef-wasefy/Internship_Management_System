@@ -43,25 +43,7 @@ public class CompanyService : ICompanyService
         return true;
     }
 
-    public async Task<CompanyProfileDto?> ApproveAsync(int companyProfileId)
-    {
-        var profile = await _context.CompanyProfiles
-            .Include(p => p.User)
-            .FirstOrDefaultAsync(p => p.Id == companyProfileId);
-
-        if (profile is null)
-        {
-            return null;
-        }
-
-        profile.IsApproved = true;
-        profile.UpdatedAt = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync();
-        return ToDto(profile);
-    }
-
-    private static CompanyProfileDto ToDto(CompanyProfile profile) => new()
+    internal static CompanyProfileDto ToDto(CompanyProfile profile) => new()
     {
         Id = profile.Id,
         Email = profile.User.Email,

@@ -53,6 +53,7 @@ builder.Services.AddScoped<ICurrentUserAccessor, CurrentUserAccessor>();
 builder.Services.AddScoped<IStudentService, StudentService>();
 builder.Services.AddScoped<ICompanyService, CompanyService>();
 builder.Services.AddScoped<IApplicationService, ApplicationService>();
+builder.Services.AddScoped<IAdminService, AdminService>();
 
 // The JWT signing key lives in User Secrets, same as the DB password - see D11/D12.
 var jwtSection = builder.Configuration.GetSection("Jwt");

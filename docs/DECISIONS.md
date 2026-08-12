@@ -167,4 +167,41 @@ reason, and the alternative we rejected — so the choices can be explained in a
   review applications for its own internships," REQUIREMENTS.md CO-7/CO-8) are expected
   to follow this exact same pattern.
 
+## D16 — Admin actions moved into a dedicated `IAdminService`; "reject" = disable
+- **Decision:** `ApproveCompanyAsync` (originally a stub in `ICompanyService`, Phase 7)
+  moved into a new `IAdminService` alongside the Phase 11 additions
+  (`RejectCompanyAsync`, `GetDashboardAsync`, `GetPendingCompaniesAsync`,
+  `GetUsersAsync`, `DisableUserAsync`). `ICompanyService` is now purely
+  company-self-service (view/update its own profile) — no admin-only method remains on
+  it. Separately: because `CompanyProfile` has only a boolean `IsApproved` (no
+  three-state Pending/Approved/Rejected field), **rejecting a company sets
+  `IsApproved = false` and disables its `User` account outright**
+  (`IsDisabled = true`), so a rejected company can't log back in and re-apply
+  indefinitely, and naturally drops off the "pending" list.
+- **Why:** Phase 7 explicitly flagged `ApproveAsync` living on `ICompanyService` as a
+  temporary stub, anticipating a real `AdminService` once there was enough admin-only
+  logic to justify one (see that phase's code comment). Phase 11 is that point — six
+  admin actions is enough to warrant its own service, and keeping approve/reject
+  together (both are "an admin acting on a company," not "a company acting on itself")
+  is a cleaner boundary than splitting them across two services. For reject: adding a
+  proper `ApprovalStatus` enum (Pending/Approved/Rejected) to the schema would be the
+  "more correct" relational design, but no current requirement needs to distinguish "was
+  rejected" from "was disabled for some other reason" — reusing the existing
+  `IsDisabled` flag avoids a schema change and migration for a distinction nothing
+  currently reads.
+- **Rejected:** Adding a new `ApprovalStatus` field/migration just for this (unnecessary
+  schema growth for a distinction with no current consumer — matches the project's
+  standing "avoid over-engineering" rule). Also rejected: leaving `ApproveAsync` on
+  `ICompanyService` and only adding `RejectAsync` there too (would leave admin logic
+  scattered across a service that's supposed to be about company self-service).
+- **Also discovered this phase (not this decision's main topic, but related):** disabling
+  a user blocks future logins but does **not** revoke an already-issued JWT — tokens are
+  stateless and validated purely cryptographically, so a disabled user's existing token
+  keeps working (accepted by `[Authorize]`) until it naturally expires. Fixed
+  `AuthService.GetCurrentUserAsync` to re-check `IsDisabled` (so `/auth/me` at least
+  reports honestly), but did **not** build a general token-revocation mechanism (a
+  blocklist, or short-lived tokens + refresh) — that's a substantial feature in its own
+  right, out of scope for "add a disable endpoint," and documented as a known limitation
+  in `docs/API_SPEC.md` rather than silently left unmentioned.
+
 ---

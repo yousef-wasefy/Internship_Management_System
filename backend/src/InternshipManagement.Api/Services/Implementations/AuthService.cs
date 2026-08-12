@@ -95,7 +95,14 @@ public class AuthService : IAuthService
     public async Task<CurrentUserDto?> GetCurrentUserAsync(int userId)
     {
         var user = await _context.Users.FindAsync(userId);
-        return user is null
+
+        // Mirrors LoginAsync's IsDisabled check (Phase 6/11): a disabled account's
+        // *existing* token is still cryptographically valid until it expires (JWTs are
+        // stateless - disabling doesn't revoke tokens already issued, only blocks future
+        // logins), but /auth/me should still honestly report "you're not a valid session
+        // anymore" rather than silently confirming a disabled identity. This does not
+        // extend to every other endpoint - see docs/DECISIONS.md D16.
+        return user is null || user.IsDisabled
             ? null
             : new CurrentUserDto { Id = user.Id, Email = user.Email, Role = user.Role };
     }

@@ -164,19 +164,90 @@ see (and find the id of) its drafts and closed posts.
 
 ---
 
-## Admin *(stub — full module in Phase 11)*
+## Admin
 
-Backed by `AdminController` → `ICompanyService`. Requires a valid token with the
-**Admin** role.
+Backed by `AdminController` → `IAdminService` → `AppDbContext`. Every endpoint requires a
+valid token with the **Admin** role.
+
+### `GET /api/admin/dashboard`
+
+Platform-wide statistics.
+
+**Response `200 OK`** — `AdminDashboardDto`
+```json
+{
+  "totalStudents": 12,
+  "totalCompanies": 14,
+  "pendingCompanies": 1,
+  "totalInternships": 3,
+  "openInternships": 3,
+  "totalApplications": 3,
+  "acceptedApplications": 1,
+  "rejectedApplications": 1
+}
+```
+
+### `GET /api/admin/companies/pending`
+
+Companies that are neither approved nor already rejected — the admin's review queue.
+
+**Response `200 OK`** — `CompanyProfileDto[]` (same shape as `GET /api/companies/me`).
 
 ### `PATCH /api/admin/companies/{id}/approve`
 
 Approves a company by its `CompanyProfile` id (not the company's `User` id). Sets
-`IsApproved = true`.
+`IsApproved = true`. Once approved, it drops off the pending list.
 
 **Response `200 OK`** — the updated `CompanyProfileDto` (`isApproved: true`).
 **Response `404 Not Found`** — no company profile with that id.
-**Response `401`/`403`** — no/invalid token, or a valid token that isn't an Admin.
+
+### `PATCH /api/admin/companies/{id}/reject`
+
+Rejects a company. The schema has no separate "Rejected" state (`CompanyProfile` only
+has a boolean `IsApproved`), so rejecting keeps `IsApproved` false **and disables the
+underlying account** (`User.IsDisabled = true`) — a rejected company can no longer log in
+at all, and naturally drops off the pending list. See `docs/DECISIONS.md` D16.
+
+**Response `200 OK`** — the updated `CompanyProfileDto` (`isApproved: false`).
+**Response `404 Not Found`** — no company profile with that id.
+
+### `GET /api/admin/users`
+
+Every user on the platform, most recently created first.
+
+**Response `200 OK`** — `AdminUserDto[]`
+```json
+[
+  {
+    "id": 42,
+    "email": "sara@example.com",
+    "displayName": "Sara Ahmed",
+    "role": "Student",
+    "isDisabled": false,
+    "createdAt": "2026-08-14T20:00:00.000Z"
+  }
+]
+```
+`displayName` is the student's full name, the company's name, or `null` for an Admin
+account — resolved from whichever profile (if any) belongs to the user.
+
+### `PATCH /api/admin/users/{id}/disable`
+
+Disables any user by their `User` id — blocks future logins (`AuthService.LoginAsync`
+rejects a disabled account, same generic "invalid email or password" message as any
+other failed login). **Does not revoke tokens already issued** — see the note below.
+
+**Response `200 OK`** — the updated `AdminUserDto` (`isDisabled: true`).
+**Response `404 Not Found`** — no user with that id.
+
+> **Known limitation, not a bug:** JWTs are stateless and validated purely
+> cryptographically — disabling a user blocks their *next login*, but any token issued
+> *before* the disable action remains valid (accepted by `[Authorize]`) until it
+> naturally expires (60 minutes, per `Jwt:ExpiryMinutes`). The one exception is
+> `GET /api/auth/me`, which re-checks `IsDisabled` against the database on every call and
+> will correctly return `401` even for an already-issued token. Every other endpoint does
+> not perform this per-request check. A real revocation system (a token blocklist, or
+> short-lived tokens with refresh) is future work, not built in this phase — see D16.
 
 ---
 
@@ -460,8 +531,9 @@ Two more endpoints, added alongside the status update above:
 
 ## Not Yet Implemented
 
-Endpoints named in `docs/PHASES.md` §11 but not built yet, added in later phases:
+Endpoints named in the original project brief but not built yet, added in later phases:
 - `GET /api/applications/{id}` (a single-application detail view — `GET /my` and the two
-  company-facing listing endpoints above have covered every need so far)
-- The rest of the `Admin` module: dashboard, pending-companies list, reject, user
-  management (Phase 11 — only the approve action exists so far)
+  company-facing listing endpoints have covered every need so far)
+- A way to re-enable a disabled user, or "un-reject" a company — only the
+  forward/disabling actions exist (Phase 11 didn't name a reverse action; a direct
+  database fix is the only way today if one is ever needed)

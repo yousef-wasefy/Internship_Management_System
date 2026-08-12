@@ -334,3 +334,40 @@ Template for each entry:
   owner through the *application's* `InternshipPost.Company.UserId` - two different
   navigation paths arriving at the same ownership fact, because the two methods start
   from different resources (an internship id vs. an application id).
+
+## Phase 11 — Admin Dashboard and Management (2026-08-16)
+- **New concepts:** **Aggregation queries** (`CountAsync` with a filter) as the simplest
+  possible "dashboard" - eight independent counts, each one line, rather than one
+  complex combined query; readability winning over minimizing round-trips at this
+  project's scale. Modeling a **missing schema state through an existing field** instead
+  of adding a new one - there's no "Rejected" value anywhere in the database, so
+  rejecting a company reuses the already-existing `IsDisabled` flag to achieve the same
+  practical effect (the company can't use the platform), a deliberate reuse rather than
+  a three-state field nothing else needs yet. The concrete difference between **stateless
+  token validation** and **revocation** - a JWT is checked by verifying its signature and
+  expiry, a purely local, no-database-lookup operation; that's exactly what makes JWTs
+  fast and simple, and exactly why there's no way to "unvalidate" one early without
+  adding back a database check somewhere (which is what `/auth/me` now does, and most
+  other endpoints deliberately don't).
+- **What confused me / how I resolved it:** Assumed disabling a user would immediately
+  block *all* of their access, and was surprised when a disabled student's existing
+  token still worked at `/auth/me`. This wasn't a bug in the disable logic - it revealed
+  that `GetCurrentUserAsync` never checked `IsDisabled` at all (only `LoginAsync` did,
+  since Phase 6). Fixed that one specific gap, but didn't chase it further into
+  "make every endpoint re-check the database on every request," since that's a real
+  architectural tradeoff (giving up JWT's normal statelessness) worth a deliberate future
+  decision, not a quick patch bolted on to a "add a disable button" phase. Verified the
+  fix by recreating the exact scenario: issue a token, disable the account, then reuse
+  that specific pre-issued token - confirming `/auth/me` now correctly returns 401 while
+  (deliberately, and now documented) every other endpoint still wouldn't.
+- **Could now explain in an interview:** Why `ApproveCompanyAsync` moved out of
+  `ICompanyService` into a new `IAdminService` this phase, and why that's a real
+  refactor closing a documented Phase 7 stub, not scope creep. Why "reject" and "disable"
+  are two different endpoints even though they change the same underlying field
+  (`IsDisabled`) - they represent different *decisions* an admin can make (rejecting a
+  company that never should have been approved, vs. disabling any user for any reason at
+  any time), even though the schema doesn't distinguish them after the fact. Why a JWT
+  can't be "revoked" the way a session cookie can without adding infrastructure
+  specifically for that (a blocklist, or short-lived tokens with a refresh flow) - and
+  why that's a reasonable, honestly-documented limitation for this project's scope
+  rather than something to silently paper over.
