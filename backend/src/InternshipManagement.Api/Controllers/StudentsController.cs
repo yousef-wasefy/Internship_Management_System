@@ -26,11 +26,13 @@ public class StudentsController : ControllerBase
         var userId = _currentUserAccessor.GetUserId(User);
         if (userId is null)
         {
-            return Unauthorized();
+            return Problem(statusCode: StatusCodes.Status401Unauthorized);
         }
 
         var profile = await _studentService.GetMyProfileAsync(userId.Value);
-        return profile is null ? NotFound() : Ok(profile);
+        return profile is null
+            ? Problem(statusCode: StatusCodes.Status404NotFound, detail: "Student profile not found.")
+            : Ok(profile);
     }
 
     [HttpPut("me")]
@@ -39,10 +41,12 @@ public class StudentsController : ControllerBase
         var userId = _currentUserAccessor.GetUserId(User);
         if (userId is null)
         {
-            return Unauthorized();
+            return Problem(statusCode: StatusCodes.Status401Unauthorized);
         }
 
         var updated = await _studentService.UpdateMyProfileAsync(userId.Value, dto);
-        return updated ? NoContent() : NotFound();
+        return updated
+            ? NoContent()
+            : Problem(statusCode: StatusCodes.Status404NotFound, detail: "Student profile not found.");
     }
 }

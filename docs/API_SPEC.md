@@ -11,6 +11,79 @@ after 60 minutes.
 
 ---
 
+## Error Response Format
+
+Every error response in this API — validation failures, business rule violations,
+authentication/authorization failures, "not found," and unexpected server errors —
+returns the same shape: **[RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457)**
+(`application/problem+json`), via ASP.NET Core's built-in `AddProblemDetails()` plus a
+custom authorization result handler (Phase 12 — see `docs/DECISIONS.md` D17).
+
+**Business rule / not found / forbidden / unauthorized** (`type`, `title`, `status`,
+`detail`, `traceId`):
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.5",
+  "title": "Not Found",
+  "status": 404,
+  "detail": "Internship not found.",
+  "traceId": "00-d44386b22fffa6669bb229cdd6f78fb7-b9844d3802134420-00"
+}
+```
+
+**DTO validation failures** (automatic, from `[Required]`/`[EmailAddress]`/`[StringLength]`/
+etc. on the request DTOs) — same shape, plus a field-by-field `errors` dictionary instead
+of a single `detail`:
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+  "title": "One or more validation errors occurred.",
+  "status": 400,
+  "errors": {
+    "Email": ["The Email field is not a valid e-mail address."],
+    "Password": ["The field Password must be a string or array type with a minimum length of '8'."]
+  },
+  "traceId": "00-5877bae8ef3bc52652721f0469427f09-6ad6ab7f119cf2f7-00"
+}
+```
+
+**Unexpected server errors** (`500`, from `Middleware/GlobalExceptionHandler.cs`) — same
+shape, deliberately **no `detail`**: the real exception is logged server-side, but never
+echoed to the client (an information-disclosure risk otherwise):
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.6.1",
+  "title": "An unexpected error occurred.",
+  "status": 500
+}
+```
+
+Per-endpoint sections below only note the **status code** and, where relevant, the exact
+`detail` message(s) a business rule can produce — the envelope shape is always the one
+above.
+
+---
+
+## Validation
+
+Every request DTO validates its fields via .NET's `DataAnnotations`
+(`[Required]`, `[EmailAddress]`, `[StringLength]`, `[MinLength]`, `[Url]`) — enforced
+automatically by `[ApiController]` before a request ever reaches a controller action.
+Failures return `400` in the validation shape above. Notable rules:
+- **Emails** must be valid email format (`RegisterStudentDto`, `RegisterCompanyDto`, `LoginDto`).
+- **Passwords** need at least 8 characters **at registration** — `LoginDto.Password` only
+  requires *some* value be sent (a too-short guess still just fails normally via BCrypt).
+- **`FullName`/`CompanyName`/`Title`** are required, capped at 200 characters.
+- **URL fields** (`CVUrl`, `LinkedInUrl`, `GitHubUrl`, `WebsiteUrl`) must be well-formed
+  URLs *if provided* — all are optional.
+- **`CreateInternshipDto`/`UpdateInternshipDto.ApplicationDeadline`** has **no** "must be
+  in the future" validation at the DTO level — a Draft can have its deadline decided
+  later. That specific rule is a *business* rule, enforced only when *opening* a post
+  (see Internships → Publishing rules below) — DTO validation checks request *shape*,
+  not business *permission*.
+
+---
+
 ## Auth
 
 Backed by `AuthController` → `IAuthService` → `AppDbContext`. All four endpoints are
@@ -35,7 +108,8 @@ a token, the same as logging in right after.
   "role": "Student"
 }
 ```
-**Response `409 Conflict`** — an account with this email already exists.
+**Response `400 Bad Request`** — DTO validation failure (see Validation above).
+**Response `409 Conflict`** — `detail: "An account with this email already exists."`
 
 ### `POST /api/auth/register-company`
 
@@ -46,7 +120,7 @@ REQUIREMENTS.md CO-3). Same response shape as above, with `role: "Company"`.
 ```json
 { "email": "hr@acme.com", "password": "Passw0rd!", "companyName": "Acme Corp" }
 ```
-**Response `200 OK`** — `AuthResponseDto` · **Response `409 Conflict`** — email taken.
+**Response `200 OK`** — `AuthResponseDto`. **Response `400`/`409`** — same as above.
 
 ### `POST /api/auth/login`
 
@@ -55,9 +129,9 @@ REQUIREMENTS.md CO-3). Same response shape as above, with `role: "Company"`.
 { "email": "sara@example.com", "password": "Passw0rd!" }
 ```
 **Response `200 OK`** — `AuthResponseDto` (same shape as register).
-**Response `401 Unauthorized`** — wrong password, unknown email, or a disabled account.
-The message is identical in every case (`"Invalid email or password."`) — the API never
-reveals *which* part was wrong.
+**Response `401 Unauthorized`** — `detail: "Invalid email or password."` — wrong
+password, unknown email, **or** a disabled account all produce this identical message;
+the API never reveals *which* part was wrong.
 
 ### `GET /api/auth/me`
 
@@ -67,7 +141,9 @@ Returns the identity of whoever the bearer token belongs to. **Requires a token.
 ```json
 { "id": 6, "email": "sara@example.com", "role": "Student" }
 ```
-**Response `401 Unauthorized`** — missing, expired, or invalid token.
+**Response `401 Unauthorized`** — missing, expired, or invalid token, **or** the token
+belongs to a now-disabled account (re-checked against the database on every call to this
+specific endpoint — see the Admin section's note on disabled-user tokens).
 
 ---
 
@@ -104,12 +180,14 @@ valid token that isn't a Student (e.g. a Company).
 ### `PUT /api/students/me`
 
 Updates the logged-in student's own profile. `fullName` is required; everything else is
-optional.
+optional (see Validation above for field-level rules).
 
 **Request body** — `UpdateStudentProfileDto` (same fields as the DTO above, minus `id`,
 `email`, and the timestamps — those aren't editable through this endpoint).
 
-**Response `204 No Content`** — updated. **Response `401`/`403`** — same rules as `GET`.
+**Response `204 No Content`** — updated.
+**Response `400 Bad Request`** — DTO validation failure.
+**Response `401`/`403`** — same rules as `GET`.
 
 ---
 
@@ -150,16 +228,24 @@ all; only an admin can approve a company (see below).
 
 **Request body** — `UpdateCompanyProfileDto`.
 
-**Response `204 No Content`** — updated. **Response `401`/`403`** — same rules as `GET`.
+**Response `204 No Content`** — updated.
+**Response `400 Bad Request`** — DTO validation failure.
+**Response `401`/`403`** — same rules as `GET`.
 
 ### `GET /api/companies/me/internships`
 
-Returns **every** internship post owned by the logged-in company, regardless of status
-(`Draft`/`Open`/`Closed`/`Cancelled`) — added in Phase 8, since the public
-`GET /api/internships` listing only shows `Open` posts, so a company needs its own way to
-see (and find the id of) its drafts and closed posts.
+Returns internship posts owned by the logged-in company, regardless of status — added in
+Phase 8, since the public `GET /api/internships` listing only shows `Open` posts, so a
+company needs its own way to see (and find the id of) its drafts and closed posts.
 
-**Response `200 OK`** — `InternshipListDto[]` (same shape as the public listing).
+**Query parameters:**
+- `status` *(optional, Phase 12)* — filter to exactly one status (e.g. `?status=Draft`).
+  Omit to get every status. Safe to expose here (unlike on the public listing) since the
+  caller already sees every status regardless.
+
+**Response `200 OK`** — `InternshipListDto[]` (same shape as the public listing, **not
+paginated** — a company's own post count is expected to stay small; pagination was only
+added to the public listing, see Internships below).
 **Response `401`/`403`** — same rules as the other Companies endpoints.
 
 ---
@@ -199,7 +285,7 @@ Approves a company by its `CompanyProfile` id (not the company's `User` id). Set
 `IsApproved = true`. Once approved, it drops off the pending list.
 
 **Response `200 OK`** — the updated `CompanyProfileDto` (`isApproved: true`).
-**Response `404 Not Found`** — no company profile with that id.
+**Response `404 Not Found`** — `detail: "Company not found."`
 
 ### `PATCH /api/admin/companies/{id}/reject`
 
@@ -209,7 +295,7 @@ underlying account** (`User.IsDisabled = true`) — a rejected company can no lo
 at all, and naturally drops off the pending list. See `docs/DECISIONS.md` D16.
 
 **Response `200 OK`** — the updated `CompanyProfileDto` (`isApproved: false`).
-**Response `404 Not Found`** — no company profile with that id.
+**Response `404 Not Found`** — `detail: "Company not found."`
 
 ### `GET /api/admin/users`
 
@@ -234,11 +320,11 @@ account — resolved from whichever profile (if any) belongs to the user.
 ### `PATCH /api/admin/users/{id}/disable`
 
 Disables any user by their `User` id — blocks future logins (`AuthService.LoginAsync`
-rejects a disabled account, same generic "invalid email or password" message as any
-other failed login). **Does not revoke tokens already issued** — see the note below.
+rejects a disabled account, same generic `401` every failed login uses). **Does not
+revoke tokens already issued** — see the note below.
 
 **Response `200 OK`** — the updated `AdminUserDto` (`isDisabled: true`).
-**Response `404 Not Found`** — no user with that id.
+**Response `404 Not Found`** — `detail: "User not found."`
 
 > **Known limitation, not a bug:** JWTs are stateless and validated purely
 > cryptographically — disabling a user blocks their *next login*, but any token issued
@@ -272,7 +358,7 @@ a Phase 8 bug; no phase in the plan adds a cancel action).
   whichever company is logged in (resolved via the JWT, not client-supplied).
 
 **Publishing rules** (checked by `PATCH .../open`, `OperationResult.ValidationFailed` →
-HTTP `400` with a `{ "message": "..." }` body):
+HTTP `400`, `detail` set to the specific message):
 1. The owning company must be **approved** (`CompanyProfile.IsApproved == true`) —
    otherwise: `"Your company must be approved by an admin before you can open internship posts."`
 2. `Title` and `Description` must both be non-empty — otherwise:
@@ -283,27 +369,52 @@ HTTP `400` with a `{ "message": "..." }` body):
    `"A cancelled internship cannot be reopened."`
 
 **Closing rules** (`PATCH .../close`): only a post whose current status is `Open` can be
-closed — otherwise `400` with `"Only an open internship can be closed."`
+closed — otherwise `400` with `detail: "Only an open internship can be closed."`
 
 ### `GET /api/internships`
 
-Returns a summary list of internship posts — **only `Open` ones** (Phase 8; students
-should never see another company's drafts). Public, no token required.
+Public, paginated listing of **Open** internship posts (Phase 8: students should never
+see another company's drafts), with optional filtering and search (Phase 12).
 
-**Response `200 OK`** — `InternshipListDto[]`
+**Query parameters** (`InternshipQueryParameters`, all optional):
+- `page` — 1-based page number. Default `1`.
+- `pageSize` — items per page. Default `10`, clamped to a maximum of `50`.
+- `location` — case-insensitive partial match against `Location`.
+- `workMode` — exact match: `Onsite`, `Remote`, or `Hybrid`.
+- `search` — case-insensitive partial match against `Title` only.
+
+No `status` filter here on purpose — the listing is hard-restricted to `Open` regardless
+of input; a status filter would either be a no-op or misleadingly imply other statuses
+are reachable. (A company's own listing, above, supports filtering by status instead,
+since it's safe there.)
+
+**Example:** `GET /api/internships?location=Cairo&workMode=Remote&search=backend&page=1&pageSize=10`
+
+**Response `200 OK`** — `PagedResult<InternshipListDto>`
 ```json
-[
-  {
-    "id": 7,
-    "title": "Backend Intern",
-    "location": null,
-    "workMode": "Remote",
-    "applicationDeadline": "2026-12-31T00:00:00Z",
-    "status": "Open",
-    "companyName": "Company A"
-  }
-]
+{
+  "items": [
+    {
+      "id": 18,
+      "title": "Backend Intern",
+      "location": "Cairo, Egypt",
+      "workMode": "Remote",
+      "applicationDeadline": "2026-12-31T00:00:00Z",
+      "status": "Open",
+      "companyName": "Phase12 Co"
+    }
+  ],
+  "page": 1,
+  "pageSize": 10,
+  "totalCount": 1,
+  "totalPages": 1
+}
 ```
+
+> **Note:** this response shape changed in Phase 12 — before this phase, `GET /api/internships`
+> returned a bare `InternshipListDto[]` array. Any client written against the Phase
+> 5–11 shape needs updating to read `.items` instead of using the response directly as
+> an array.
 
 ### `GET /api/internships/{id}`
 
@@ -329,7 +440,7 @@ a direct id lookup can no longer reveal an unpublished draft). Public, no token 
 }
 ```
 **Response `404 Not Found`** — no post with that id, **or it exists but isn't `Open`**
-(the two cases are indistinguishable on purpose — a company's own listing, below, is
+(the two cases are indistinguishable on purpose — a company's own listing, above, is
 where the real status is visible).
 
 ### `POST /api/internships`
@@ -346,13 +457,15 @@ Creates a new internship post, owned by the logged-in company. Always starts as
   "applicationDeadline": "2026-12-31T00:00:00Z"
 }
 ```
-`title` is required; every other field is optional (though `description` becomes
-effectively required before the post can be opened — see Publishing rules above).
-`workMode` must be one of `"Onsite"`, `"Remote"`, `"Hybrid"`. `applicationDeadline`
-should be an ISO-8601 date-time; if no timezone offset is given, it's treated as UTC.
+`title` is required (see Validation above); every other field is optional (though
+`description` becomes effectively required before the post can be opened — see
+Publishing rules above). `workMode` must be one of `"Onsite"`, `"Remote"`, `"Hybrid"`.
+`applicationDeadline` should be an ISO-8601 date-time; if no timezone offset is given, it
+is treated as UTC.
 
 **Response `201 Created`** — `InternshipDetailsDto`, `Location` header → `GET /api/internships/{id}`
 (note: that `GET` will 404 until the post is opened — it's a `Draft`).
+**Response `400 Bad Request`** — DTO validation failure.
 **Response `401`/`403`** — no/invalid token, or a valid token that isn't a Company.
 
 ### `PUT /api/internships/{id}`
@@ -363,8 +476,9 @@ Replaces the editable fields of an existing internship post. Does **not** change
 **Request body** — `UpdateInternshipDto` (same shape as `CreateInternshipDto`).
 
 **Response `204 No Content`** — updated.
-**Response `404 Not Found`** — no post with that id.
-**Response `403 Forbidden`** — valid Company token, but not the post's owner.
+**Response `400 Bad Request`** — DTO validation failure.
+**Response `404 Not Found`** — `detail: "Internship not found."`
+**Response `403 Forbidden`** — `detail: "You do not own this internship post."`
 **Response `401 Unauthorized`** — no/invalid token.
 
 ### `DELETE /api/internships/{id}`
@@ -380,8 +494,7 @@ Publishes a `Draft` (or reopens a `Closed`) post, subject to the Publishing rule
 **Owner only.**
 
 **Response `200 OK`** — the updated `InternshipDetailsDto` (`status: "Open"`).
-**Response `400 Bad Request`** — `{ "message": "..." }`, one of the four Publishing rule
-messages above.
+**Response `400 Bad Request`** — one of the four Publishing rule messages above, as `detail`.
 **Response `404`/`403`/`401`** — same rules as `PUT`.
 
 ### `PATCH /api/internships/{id}/close`
@@ -389,7 +502,7 @@ messages above.
 Closes an `Open` post. **Owner only.**
 
 **Response `200 OK`** — the updated `InternshipDetailsDto` (`status: "Closed"`).
-**Response `400 Bad Request`** — `{ "message": "Only an open internship can be closed." }`.
+**Response `400 Bad Request`** — `detail: "Only an open internship can be closed."`
 **Response `404`/`403`/`401`** — same rules as `PUT`.
 
 ### `POST /api/internships/{id}/apply`
@@ -404,8 +517,7 @@ Applies to an internship as the logged-in student. Requires a valid token with t
 **Response `201 Created`** — the new `ApplicationDto` (`status: "Pending"`). No `Location`
 header — there's no `GET /api/applications/{id}` endpoint yet to point at (see
 "Not Yet Implemented" below); use `GET /api/applications/my` instead.
-**Response `404 Not Found`** — no internship with that id.
-**Response `400 Bad Request`** — `{ "message": "..." }`, one of:
+**Response `400 Bad Request`** — DTO validation failure, or one of:
   - `"This internship is not open for applications."` — the post is `Draft`, `Closed`,
     or `Cancelled` (deliberately the same message for all three — which one it is isn't
     the student's business).
@@ -414,9 +526,10 @@ header — there's no `GET /api/applications/{id}` endpoint yet to point at (see
   - `"You have already applied to this internship."` — enforced twice: a friendly
     pre-check, backed by the database's own composite unique constraint (Phase 4) as the
     final word, in case of a race between two near-simultaneous requests.
+**Response `404 Not Found`** — no internship with that id.
 **Response `401`/`403`** — no/invalid token, or a valid token that isn't a Student.
 
-### `GET /api/internships/{id}/applications` *(Phase 10)*
+### `GET /api/internships/{id}/applications`
 
 Returns every applicant for one specific internship, from the owning company's
 perspective. **Owner only.**
@@ -463,13 +576,13 @@ Withdraws the logged-in student's own application. **Student role, owner only, a
 while `Pending`.**
 
 **Response `200 OK`** — the updated `ApplicationDto` (`status: "Withdrawn"`).
-**Response `404 Not Found`** — no application with that id.
-**Response `403 Forbidden`** — a valid Student token, but not this application's owner.
-**Response `400 Bad Request`** — `{ "message": "Only a pending application can be withdrawn." }`
+**Response `404 Not Found`** — `detail: "Application not found."`
+**Response `403 Forbidden`** — `detail: "This is not your application."`
+**Response `400 Bad Request`** — `detail: "Only a pending application can be withdrawn."`
 — e.g. it was already withdrawn, or a company already shortlisted/accepted/rejected it.
 **Response `401 Unauthorized`** — no/invalid token.
 
-### `PATCH /api/applications/{id}/status` *(Phase 10)*
+### `PATCH /api/applications/{id}/status`
 
 Lets the owning company shortlist, accept, or reject an application. **Company role,
 owner of the application's internship only.**
@@ -506,10 +619,9 @@ the note).
   "companyNotes": "Strong candidate, schedule interview"
 }
 ```
-**Response `404 Not Found`** — no application with that id.
-**Response `403 Forbidden`** — a valid Company token, but not the owner of this
-application's internship.
-**Response `400 Bad Request`** — `{ "message": "..." }`, one of:
+**Response `404 Not Found`** — `detail: "Application not found."`
+**Response `403 Forbidden`** — `detail: "You do not own the internship this application is for."`
+**Response `400 Bad Request`** — one of:
   - `"A withdrawn application cannot be reviewed."` — checked before the requested
     status value, since a withdrawn application is off-limits regardless of what it was
     being changed to (REQUIREMENTS.md §4.2 rule 5).
@@ -518,7 +630,7 @@ application's internship.
 
 ---
 
-## Company applicant views *(Phase 10)*
+## Company applicant views
 
 Two more endpoints, added alongside the status update above:
 

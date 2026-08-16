@@ -204,4 +204,35 @@ reason, and the alternative we rejected — so the choices can be explained in a
   right, out of scope for "add a disable endpoint," and documented as a known limitation
   in `docs/API_SPEC.md` rather than silently left unmentioned.
 
+## D17 — Every error response uses RFC 9457 Problem Details
+- **Decision:** All error responses across the entire API — DTO validation failures,
+  business-rule violations (`Problem(statusCode, detail)` in controllers), `401`/`403`
+  from `[Authorize]` role checks, and unhandled `500`s — return the same
+  `application/problem+json` shape (`type`/`title`/`status`/`detail`/`errors`/`traceId`).
+  Achieved via three pieces: `builder.Services.AddProblemDetails()` (built into ASP.NET
+  Core 8+, already gives `[ApiController]`'s automatic DataAnnotations validation this
+  shape for free); every controller's previously-inconsistent
+  `Conflict(string)`/`Unauthorized(string)`/`BadRequest(new{message})`/bare
+  `NotFound()`/`Forbid()` calls replaced with `Problem(statusCode:, detail:)`; and a
+  custom `IAuthorizationMiddlewareResultHandler`
+  (`ProblemDetailsAuthorizationMiddlewareResultHandler`) so `[Authorize(Roles=...)]`
+  rejections — which happen in framework middleware *before* any controller code runs,
+  and previously returned a bare empty-bodied `401`/`403` — get the same shape too.
+- **Why:** Phases 5–11 each picked a locally-reasonable but *different* error shape
+  (a bare string, `{ message: "..." }`, or nothing at all) because no phase's job was to
+  look at the API as a whole. Phase 12's explicit goal is a *consistent* API — RFC 9457
+  is the standard shape for HTTP API errors, already partially given for free by
+  `[ApiController]`'s validation handling, so extending it everywhere (rather than
+  inventing a separate custom shape) means the API matches what any developer already
+  familiar with ASP.NET Core or REST conventions would expect.
+- **Rejected:** Inventing a custom envelope (e.g. `{ success: false, error: "..." }`) -
+  more work to hand-roll consistently, and less recognizable than a named standard.
+  Also rejected: leaving the `[Authorize]`-rejection gap unfixed (empty-bodied 401/403)
+  as "good enough" - found live while testing (see LEARNING_LOG.md), and fixing it was a
+  contained, well-scoped addition directly serving this same decision's goal.
+- **Also decided alongside this:** `GET /api/internships`'s response shape changed from a
+  bare array to `PagedResult<InternshipListDto>` (pagination, D-adjacent to D17 but
+  really about the Phase 12 pagination/filtering/search requirement, not error handling)
+  — called out explicitly in `docs/API_SPEC.md` as a breaking change to that one endpoint.
+
 ---

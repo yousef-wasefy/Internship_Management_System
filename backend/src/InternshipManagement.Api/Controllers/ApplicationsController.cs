@@ -30,13 +30,14 @@ public class ApplicationsController : ControllerBase
         var userId = _currentUserAccessor.GetUserId(User);
         if (userId is null)
         {
-            return Unauthorized();
+            return Problem(statusCode: StatusCodes.Status401Unauthorized);
         }
 
         var applications = await _applicationService.GetMyApplicationsAsync(userId.Value);
         return Ok(applications);
     }
 
+    /// <summary>Withdraws the logged-in student's own application. Owner only, and only while Pending.</summary>
     [HttpPatch("{id:int}/withdraw")]
     [Authorize(Roles = "Student")]
     public async Task<ActionResult<ApplicationDto>> Withdraw(int id)
@@ -44,19 +45,23 @@ public class ApplicationsController : ControllerBase
         var userId = _currentUserAccessor.GetUserId(User);
         if (userId is null)
         {
-            return Unauthorized();
+            return Problem(statusCode: StatusCodes.Status401Unauthorized);
         }
 
         var (result, error, application) = await _applicationService.WithdrawAsync(id, userId.Value);
         return result switch
         {
-            OperationResult.NotFound => NotFound(),
-            OperationResult.Forbidden => Forbid(),
-            OperationResult.ValidationFailed => BadRequest(new { message = error }),
+            OperationResult.NotFound => Problem(statusCode: StatusCodes.Status404NotFound, detail: "Application not found."),
+            OperationResult.Forbidden => Problem(statusCode: StatusCodes.Status403Forbidden, detail: "This is not your application."),
+            OperationResult.ValidationFailed => Problem(statusCode: StatusCodes.Status400BadRequest, detail: error),
             _ => Ok(application)
         };
     }
 
+    /// <summary>
+    /// Lets the owning company shortlist, accept, or reject an application. Cannot be used
+    /// on a Withdrawn application, regardless of the requested status.
+    /// </summary>
     [HttpPatch("{id:int}/status")]
     [Authorize(Roles = "Company")]
     public async Task<ActionResult<ApplicantDto>> UpdateStatus(int id, UpdateApplicationStatusDto dto)
@@ -64,15 +69,15 @@ public class ApplicationsController : ControllerBase
         var userId = _currentUserAccessor.GetUserId(User);
         if (userId is null)
         {
-            return Unauthorized();
+            return Problem(statusCode: StatusCodes.Status401Unauthorized);
         }
 
         var (result, error, applicant) = await _applicationService.UpdateStatusAsync(id, userId.Value, dto);
         return result switch
         {
-            OperationResult.NotFound => NotFound(),
-            OperationResult.Forbidden => Forbid(),
-            OperationResult.ValidationFailed => BadRequest(new { message = error }),
+            OperationResult.NotFound => Problem(statusCode: StatusCodes.Status404NotFound, detail: "Application not found."),
+            OperationResult.Forbidden => Problem(statusCode: StatusCodes.Status403Forbidden, detail: "You do not own the internship this application is for."),
+            OperationResult.ValidationFailed => Problem(statusCode: StatusCodes.Status400BadRequest, detail: error),
             _ => Ok(applicant)
         };
     }

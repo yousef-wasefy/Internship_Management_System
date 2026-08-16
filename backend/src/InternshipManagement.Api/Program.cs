@@ -1,10 +1,14 @@
+using System.Reflection;
 using System.Text;
 using System.Text.Json.Serialization;
 using InternshipManagement.Api.Data;
 using InternshipManagement.Api.Helpers;
+using InternshipManagement.Api.Middleware;
 using InternshipManagement.Api.Services.Implementations;
 using InternshipManagement.Api.Services.Interfaces;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
@@ -17,10 +21,28 @@ builder.Services.AddControllers()
     // Serialize enums as their names ("Open") instead of raw numbers (1) - much easier
     // to read and test against in Swagger/Postman.
     .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
+// Powers the automatic 400 responses [ApiController] already returns for failed
+// DataAnnotations validation, AND gives Problem(...) calls in controllers (used for
+// every business-rule error - see docs/DECISIONS.md D17) a consistent JSON shape.
+builder.Services.AddProblemDetails();
+
+// Catches anything that isn't an expected, handled outcome - see Middleware/GlobalExceptionHandler.cs.
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+
 // Swashbuckle generates the OpenAPI document and serves the interactive Swagger UI.
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Internship Management System API",
+        Version = "v1",
+        Description = "REST API for students, companies, and admins to manage internship " +
+            "postings and applications. See docs/API_SPEC.md and docs/REQUIREMENTS.md in " +
+            "the repository for the full business rules behind each endpoint."
+    });
+
     // Adds the "Authorize" button to Swagger so a JWT can be attached to requests.
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
@@ -38,6 +60,16 @@ builder.Services.AddSwaggerGen(options =>
     {
         [new OpenApiSecuritySchemeReference("Bearer", document)] = new List<string>()
     });
+
+    // Picks up the <summary> XML comments written on the more business-rule-heavy
+    // controller actions (Open/Close/Apply/Withdraw/UpdateStatus/Reject/Disable) -
+    // requires <GenerateDocumentationFile> in the .csproj.
+    var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+    {
+        options.IncludeXmlComments(xmlPath);
+    }
 });
 
 // In Development, the connection string comes from .NET User Secrets (never committed
@@ -81,7 +113,16 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
+// Makes [Authorize] rejections (wrong/missing role, no token) return the same
+// ProblemDetails body shape as every other error in the API - see
+// Middleware/ProblemDetailsAuthorizationMiddlewareResultHandler.cs.
+builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, ProblemDetailsAuthorizationMiddlewareResultHandler>();
+
 var app = builder.Build();
+
+// Registered first so it wraps everything else in the pipeline - any unhandled
+// exception from any middleware or controller below gets caught here.
+app.UseExceptionHandler();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -89,8 +130,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 
-    // Seeds a placeholder company (temporary, see Data/SeedData.cs) and an admin
-    // account so there's something to log in with while testing.
+    // Seeds an admin account so there's something to log in with while testing.
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await SeedData.EnsureSeededAsync(db);

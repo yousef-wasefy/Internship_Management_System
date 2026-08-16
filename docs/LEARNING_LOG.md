@@ -371,3 +371,46 @@ Template for each entry:
   specifically for that (a blocklist, or short-lived tokens with a refresh flow) - and
   why that's a reasonable, honestly-documented limitation for this project's scope
   rather than something to silently paper over.
+
+## Phase 12 — Validation, Error Handling, and API Quality (2026-08-22)
+- **New concepts:** **RFC 9457 Problem Details** as the standard shape for HTTP API
+  errors - `type`/`title`/`status`/`detail`, recognized by any developer familiar with
+  modern REST APIs, and already partially built into ASP.NET Core (automatic
+  DataAnnotations validation has used this shape all along, unnoticed until this phase
+  gave it something to validate). The difference between **DTO validation** ("is this
+  request well-formed?" - a required field, a valid email format) and **business rule
+  validation** ("is this action allowed right now?" - Phase 8/9/10's `ValidationFailed`
+  cases) - both can produce a `400`, but they're checked at completely different layers
+  ([ApiController]'s automatic model binding vs. hand-written service logic), which is
+  *why* `CreateInternshipDto.ApplicationDeadline` has no "must be in the future"
+  attribute even though that rule very much exists (just one layer deeper, in
+  `OpenAsync`). The **global exception handler** (`IExceptionHandler`) as the
+  *last-resort* safety net - every other error in the whole project is something a
+  service deliberately decided to signal; this is the one and only place code written
+  for a totally different, unanticipated failure gets caught before it would otherwise
+  crash the request with a raw, unformatted error.
+- **What confused me / how I resolved it:** Assumed unifying every controller's error
+  responses to `Problem(...)` would make *every* 401/403 in the API consistent - then
+  found, while testing, that a wrong-role `[Authorize(Roles = "Company")]` rejection
+  still came back completely empty (no body at all), unlike the ownership-check 403s
+  from inside controller actions. The reason: `[Authorize]` rejections are handled by
+  ASP.NET Core's *authorization middleware*, entirely separate from - and running
+  *before* - any controller code, so none of my `Problem(...)` calls were ever reachable
+  for that specific path. Fixed by writing a custom `IAuthorizationMiddlewareResultHandler`
+  that intercepts exactly that case and writes the same ProblemDetails shape. A concrete
+  lesson that "add consistent error handling" isn't fully solved just by fixing every
+  controller - some rejections never reach a controller at all.
+- **Could now explain in an interview:** Why the duplicate-application check (Phase 9) and
+  most other business rules were *not* moved into DataAnnotations even though both
+  produce a `400` - DataAnnotations validate a single DTO in isolation, with no database
+  access; "have you already applied" needs a database query, which is fundamentally a
+  service-layer concern, not something an attribute on a property could ever check. Why
+  `GET /api/internships`'s response shape (a bare array before Phase 12) had to become a
+  wrapper object (`PagedResult<T>`) rather than adding pagination info as response
+  *headers* - both are legitimate real-world patterns, but a body wrapper is simpler to
+  explain and consume for a learning project, at the cost of being a breaking change to
+  that one endpoint (clearly flagged in the docs). Why status filtering was added to the
+  *company's own* internship listing but deliberately not to the public one, even though
+  the original brief's Phase 12 wording suggested "add status filtering" without that
+  distinction - the public listing's Open-only rule (Phase 8) is a security/privacy
+  boundary, not a default that a query parameter should be able to override.

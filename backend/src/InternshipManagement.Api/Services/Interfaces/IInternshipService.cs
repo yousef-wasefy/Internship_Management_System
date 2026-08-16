@@ -1,3 +1,4 @@
+using InternshipManagement.Api.DTOs.Common;
 using InternshipManagement.Api.DTOs.Internships;
 using InternshipManagement.Api.Enums;
 
@@ -5,13 +6,16 @@ namespace InternshipManagement.Api.Services.Interfaces;
 
 public interface IInternshipService
 {
-    // Public listing/details - only ever returns Open posts (Phase 8).
-    Task<List<InternshipListDto>> GetAllAsync();
+    // Public listing/details - only ever returns Open posts (Phase 8). Paginated,
+    // filterable (location/workMode), and searchable (title) since Phase 12.
+    Task<PagedResult<InternshipListDto>> GetAllAsync(InternshipQueryParameters query);
     Task<InternshipDetailsDto?> GetByIdAsync(int id);
 
-    // A company's own listing - every status, not just Open (added this phase, since
-    // the public listing above no longer shows a company its own drafts).
-    Task<List<InternshipListDto>> GetByCompanyUserIdAsync(int userId);
+    // A company's own listing - every status, not just Open (added Phase 8, since the
+    // public listing above no longer shows a company its own drafts). Optional status
+    // filter added Phase 12 (safe here, unlike on the public listing, since the caller
+    // already sees every status regardless).
+    Task<List<InternshipListDto>> GetByCompanyUserIdAsync(int userId, InternshipStatus? status);
 
     Task<InternshipDetailsDto> CreateAsync(CreateInternshipDto dto, int userId);
     Task<OperationResult> UpdateAsync(int id, UpdateInternshipDto dto, int userId);

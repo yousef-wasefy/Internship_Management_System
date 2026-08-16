@@ -19,25 +19,33 @@ public class AuthController : ControllerBase
         _currentUserAccessor = currentUserAccessor;
     }
 
+    /// <summary>Registers a new Student account and returns a token, same as logging in right after.</summary>
     [HttpPost("register-student")]
     public async Task<ActionResult<AuthResponseDto>> RegisterStudent(RegisterStudentDto dto)
     {
         var result = await _authService.RegisterStudentAsync(dto);
-        return result is null ? Conflict("An account with this email already exists.") : Ok(result);
+        return result is null
+            ? Problem(statusCode: StatusCodes.Status409Conflict, detail: "An account with this email already exists.")
+            : Ok(result);
     }
 
+    /// <summary>Registers a new Company account (starts unapproved) and returns a token.</summary>
     [HttpPost("register-company")]
     public async Task<ActionResult<AuthResponseDto>> RegisterCompany(RegisterCompanyDto dto)
     {
         var result = await _authService.RegisterCompanyAsync(dto);
-        return result is null ? Conflict("An account with this email already exists.") : Ok(result);
+        return result is null
+            ? Problem(statusCode: StatusCodes.Status409Conflict, detail: "An account with this email already exists.")
+            : Ok(result);
     }
 
     [HttpPost("login")]
     public async Task<ActionResult<AuthResponseDto>> Login(LoginDto dto)
     {
         var result = await _authService.LoginAsync(dto);
-        return result is null ? Unauthorized("Invalid email or password.") : Ok(result);
+        return result is null
+            ? Problem(statusCode: StatusCodes.Status401Unauthorized, detail: "Invalid email or password.")
+            : Ok(result);
     }
 
     [HttpGet("me")]
@@ -47,10 +55,10 @@ public class AuthController : ControllerBase
         var userId = _currentUserAccessor.GetUserId(User);
         if (userId is null)
         {
-            return Unauthorized();
+            return Problem(statusCode: StatusCodes.Status401Unauthorized);
         }
 
         var result = await _authService.GetCurrentUserAsync(userId.Value);
-        return result is null ? Unauthorized() : Ok(result);
+        return result is null ? Problem(statusCode: StatusCodes.Status401Unauthorized) : Ok(result);
     }
 }

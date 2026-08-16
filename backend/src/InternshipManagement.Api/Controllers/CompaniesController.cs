@@ -1,6 +1,7 @@
 using InternshipManagement.Api.DTOs.Applications;
 using InternshipManagement.Api.DTOs.Companies;
 using InternshipManagement.Api.DTOs.Internships;
+using InternshipManagement.Api.Enums;
 using InternshipManagement.Api.Helpers;
 using InternshipManagement.Api.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -36,11 +37,13 @@ public class CompaniesController : ControllerBase
         var userId = _currentUserAccessor.GetUserId(User);
         if (userId is null)
         {
-            return Unauthorized();
+            return Problem(statusCode: StatusCodes.Status401Unauthorized);
         }
 
         var profile = await _companyService.GetMyProfileAsync(userId.Value);
-        return profile is null ? NotFound() : Ok(profile);
+        return profile is null
+            ? Problem(statusCode: StatusCodes.Status404NotFound, detail: "Company profile not found.")
+            : Ok(profile);
     }
 
     [HttpPut("me")]
@@ -49,25 +52,31 @@ public class CompaniesController : ControllerBase
         var userId = _currentUserAccessor.GetUserId(User);
         if (userId is null)
         {
-            return Unauthorized();
+            return Problem(statusCode: StatusCodes.Status401Unauthorized);
         }
 
         var updated = await _companyService.UpdateMyProfileAsync(userId.Value, dto);
-        return updated ? NoContent() : NotFound();
+        return updated
+            ? NoContent()
+            : Problem(statusCode: StatusCodes.Status404NotFound, detail: "Company profile not found.");
     }
 
-    // Needed because the public GET /api/internships listing only shows Open posts
-    // (Phase 8) - a company otherwise has no way to see its own Draft/Closed posts.
+    /// <summary>
+    /// Every internship post owned by the logged-in company, any status. Needed because the
+    /// public GET /api/internships listing only shows Open posts (Phase 8) - a company
+    /// otherwise has no way to see its own Draft/Closed posts. Optionally filter to one
+    /// status via <c>?status=Draft</c> (Phase 12).
+    /// </summary>
     [HttpGet("me/internships")]
-    public async Task<ActionResult<List<InternshipListDto>>> GetMyInternships()
+    public async Task<ActionResult<List<InternshipListDto>>> GetMyInternships([FromQuery] InternshipStatus? status)
     {
         var userId = _currentUserAccessor.GetUserId(User);
         if (userId is null)
         {
-            return Unauthorized();
+            return Problem(statusCode: StatusCodes.Status401Unauthorized);
         }
 
-        var internships = await _internshipService.GetByCompanyUserIdAsync(userId.Value);
+        var internships = await _internshipService.GetByCompanyUserIdAsync(userId.Value, status);
         return Ok(internships);
     }
 
@@ -78,7 +87,7 @@ public class CompaniesController : ControllerBase
         var userId = _currentUserAccessor.GetUserId(User);
         if (userId is null)
         {
-            return Unauthorized();
+            return Problem(statusCode: StatusCodes.Status401Unauthorized);
         }
 
         var applicants = await _applicationService.GetApplicantsForCompanyAsync(userId.Value);

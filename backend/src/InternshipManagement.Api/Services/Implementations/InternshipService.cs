@@ -1,4 +1,5 @@
 using InternshipManagement.Api.Data;
+using InternshipManagement.Api.DTOs.Common;
 using InternshipManagement.Api.DTOs.Internships;
 using InternshipManagement.Api.Entities;
 using InternshipManagement.Api.Enums;
@@ -16,16 +17,48 @@ public class InternshipService : IInternshipService
         _context = context;
     }
 
-    public async Task<List<InternshipListDto>> GetAllAsync()
+    public async Task<PagedResult<InternshipListDto>> GetAllAsync(InternshipQueryParameters query)
     {
+        var page = Math.Max(query.Page, 1);
+        var pageSize = Math.Clamp(query.PageSize, 1, 50); // cap prevents an absurdly large page request
+
         // Public listing - only Open posts are visible to students (REQUIREMENTS.md §5).
-        var posts = await _context.InternshipPosts
+        var baseQuery = _context.InternshipPosts
             .Include(p => p.Company)
-            .Where(p => p.Status == InternshipStatus.Open)
+            .Where(p => p.Status == InternshipStatus.Open);
+
+        if (!string.IsNullOrWhiteSpace(query.Location))
+        {
+            // EF.Functions.ILike is Postgres' case-insensitive LIKE, provided by the
+            // Npgsql EF Core provider - the natural choice for this specific database.
+            baseQuery = baseQuery.Where(p => p.Location != null && EF.Functions.ILike(p.Location, $"%{query.Location}%"));
+        }
+
+        if (query.WorkMode.HasValue)
+        {
+            baseQuery = baseQuery.Where(p => p.WorkMode == query.WorkMode.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            baseQuery = baseQuery.Where(p => EF.Functions.ILike(p.Title, $"%{query.Search}%"));
+        }
+
+        var totalCount = await baseQuery.CountAsync();
+
+        var posts = await baseQuery
             .OrderByDescending(p => p.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync();
 
-        return posts.Select(ToListDto).ToList();
+        return new PagedResult<InternshipListDto>
+        {
+            Items = posts.Select(ToListDto).ToList(),
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount
+        };
     }
 
     public async Task<InternshipDetailsDto?> GetByIdAsync(int id)
@@ -37,14 +70,18 @@ public class InternshipService : IInternshipService
         return post is null ? null : ToDetailsDto(post);
     }
 
-    public async Task<List<InternshipListDto>> GetByCompanyUserIdAsync(int userId)
+    public async Task<List<InternshipListDto>> GetByCompanyUserIdAsync(int userId, InternshipStatus? status)
     {
-        var posts = await _context.InternshipPosts
+        var query = _context.InternshipPosts
             .Include(p => p.Company)
-            .Where(p => p.Company.UserId == userId)
-            .OrderByDescending(p => p.CreatedAt)
-            .ToListAsync();
+            .Where(p => p.Company.UserId == userId);
 
+        if (status.HasValue)
+        {
+            query = query.Where(p => p.Status == status.Value);
+        }
+
+        var posts = await query.OrderByDescending(p => p.CreatedAt).ToListAsync();
         return posts.Select(ToListDto).ToList();
     }
 

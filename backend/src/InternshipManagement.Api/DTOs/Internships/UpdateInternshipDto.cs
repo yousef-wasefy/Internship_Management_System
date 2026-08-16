@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using InternshipManagement.Api.Enums;
 
 namespace InternshipManagement.Api.DTOs.Internships;
@@ -7,12 +8,25 @@ namespace InternshipManagement.Api.DTOs.Internships;
 // dedicated open/close endpoints rather than this general-purpose update.
 public class UpdateInternshipDto
 {
+    [Required, StringLength(200)]
     public string Title { get; set; } = string.Empty;
+
+    [StringLength(4000)]
     public string? Description { get; set; }
+
+    [StringLength(4000)]
     public string? Requirements { get; set; }
+
+    [StringLength(4000)]
     public string? Responsibilities { get; set; }
+
+    [StringLength(200)]
     public string? Location { get; set; }
+
     public WorkMode WorkMode { get; set; }
+
+    [StringLength(100)]
     public string? Duration { get; set; }
+
     public DateTime ApplicationDeadline { get; set; }
 }
