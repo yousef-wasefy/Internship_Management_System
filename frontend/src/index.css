@@ -1,0 +1,227 @@
+:root {
+  --color-bg: #f7f7f8;
+  --color-surface: #ffffff;
+  --color-border: #e0e0e5;
+  --color-text: #1c1c22;
+  --color-muted: #6b6b76;
+  --color-primary: #2f5df5;
+  --color-primary-hover: #2448c9;
+  --color-error: #b3261e;
+  --color-error-bg: #fdecea;
+  --color-success-bg: #e8f5e9;
+  --color-success-text: #1e4620;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+a {
+  color: var(--color-primary);
+}
+
+.navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 2rem;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.navbar-brand {
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--color-text);
+}
+
+.navbar-links {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.navbar-user {
+  color: var(--color-muted);
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 1rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  font-size: 0.75rem;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.page-narrow {
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+h1 {
+  margin-top: 0;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+button {
+  font: inherit;
+  padding: 0.55rem 1.1rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--color-primary);
+  color: white;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.role-toggle {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.role-toggle button {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.role-toggle button.active {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.hint {
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.error-box {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+  border: 1px solid var(--color-error);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+}
+
+.error-box ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.success-box {
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+}
+
+.filters {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.filters input,
+.filters select {
+  flex: 1;
+  min-width: 160px;
+}
+
+.internship-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.internship-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+}
+
+.internship-card h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1.1rem;
+}
+
+.internship-card a {
+  text-decoration: none;
+  color: var(--color-text);
+}
+
+.internship-meta {
+  color: var(--color-muted);
+  font-size: 0.9rem;
+  margin: 0.2rem 0;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}

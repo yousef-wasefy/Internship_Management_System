@@ -235,4 +235,41 @@ reason, and the alternative we rejected — so the choices can be explained in a
   really about the Phase 12 pagination/filtering/search requirement, not error handling)
   — called out explicitly in `docs/API_SPEC.md` as a breaking change to that one endpoint.
 
+## D18 — Frontend stack: React + TypeScript (Vite), hand-written fetch client, Context for auth, no UI framework
+- **Decision:** The `frontend/` app (Phase 13) is scaffolded with Vite's `react-ts`
+  template, React Router for client-side routing, a small hand-written `fetch` wrapper
+  (`src/api/client.ts`) instead of axios or a generated client, React's built-in Context
+  API (`AuthContext`) instead of Redux/Zustand for the one piece of shared state (the
+  logged-in user), and plain hand-written CSS instead of a component/utility framework
+  like Tailwind or MUI. The backend gained one small addition to support it:
+  `AddCors`/`UseCors`, scoped to exactly `http://localhost:5173` (the Vite dev server
+  origin) with no `AllowCredentials()`, since auth is a Bearer token in a header, not a
+  cookie.
+- **Why:** `docs/PROJECT_SCOPE.md` calls for a "simple React + TypeScript frontend" —
+  every choice here optimizes for that word. The API surface this frontend talks to is
+  small (7 endpoints as of Phase 13), so a hand-written `apiRequest<T>()` wrapper stays
+  readable end-to-end in one file, while a generated client or axios would add a
+  dependency and a layer of indirection to learn for no real benefit at this scale. One
+  Context is enough because there is exactly one piece of state multiple unrelated
+  components need (who's logged in) — Redux/Zustand solve problems (complex derived
+  state, time-travel debugging, cross-slice coordination) this project doesn't have yet.
+  Plain CSS keeps the visual layer legible and matches `PROJECT_SCOPE.md`'s explicit
+  "Out of scope: complex UI animations."
+- **Rejected:** axios (no functionality gained here that `fetch` doesn't already have —
+  the whole point of a JWT + JSON REST API is that it needs no cookie/interceptor
+  machinery axios is best known for). Redux/Zustand/Recoil (real overhead for a single
+  auth object). Tailwind/MUI/Chakra (a styling *system* is a lot to learn just to build
+  four pages; revisit if Phase 14's dashboards make plain CSS genuinely unwieldy).
+  `AllowCredentials()` on the CORS policy (unnecessary and stricter-than-needed once you
+  add it — the token travels in `Authorization`, never a cookie, so there's nothing for
+  credentialed CORS to protect here).
+- **Also decided alongside this:** the stored JWT's `expiresAt` (already returned by
+  `AuthResponseDto` since Phase 6) is checked client-side on every app load
+  (`AuthContext`'s `readStoredAuth`) — an expired stored token is treated as logged out
+  immediately, rather than showing a logged-in UI that then fails on the first API call.
+  This is a client-side courtesy only; it doesn't change the backend's stateless-JWT
+  limitation documented in D16/`LEARNING_LOG.md` Phase 11 (a *disabled* user's
+  not-yet-expired token still works against the API until it naturally expires — the
+  frontend has no way to know that without asking the API).
+
 ---

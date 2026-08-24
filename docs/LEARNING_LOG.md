@@ -414,3 +414,46 @@ Template for each entry:
   the original brief's Phase 12 wording suggested "add status filtering" without that
   distinction - the public listing's Open-only rule (Phase 8) is a security/privacy
   boundary, not a default that a query parameter should be able to override.
+
+## Phase 13 — React Frontend Basics (2026-08-24)
+- **New concepts:** **CORS** (Cross-Origin Resource Sharing) - the browser, not the
+  server, is what blocks a fetch from `http://localhost:5173` to
+  `http://localhost:5053` by default, because they're different origins (different
+  ports count); the server has to explicitly opt in via response headers
+  (`AddCors`/`UseCors`) naming which origins may call it. **React Context** as the
+  minimum-ceremony way to share one piece of state (who's logged in) across components
+  that aren't directly related in the tree (`Navbar`, `InternshipDetailPage`'s apply
+  form) without prop-drilling it through every layer in between. The distinction
+  between a **controlled component** (an `<input>` whose `value` comes from React state,
+  and whose every keystroke calls `setState`) and letting the DOM own its own value -
+  every form field in this phase is controlled, which is *why* a state variable exists
+  for `email`, `password`, `search`, etc. even though the DOM technically stores the
+  value too. **Client-side routing** (`react-router-dom`'s `<Routes>`) - the browser's
+  URL bar changes without a full page reload; the server only ever serves one HTML
+  file (`index.html`) and JavaScript decides what to render for each path.
+- **What confused me / how I resolved it:** Registering a fresh account and then trying
+  to "apply again" without logging out first didn't feel like it should be possible to
+  test easily from the UI - but it turned out to be the perfect way to exercise the
+  *duplicate application* error path end-to-end (`OperationResult.ValidationFailed` from
+  Phase 9, surfaced through `Problem(...)` since Phase 12, now displayed by the
+  frontend's `ErrorMessage` component) without needing to fabricate anything - just
+  clicking "Submit application" on the same internship twice, as a real user might by
+  accident. Separately, while live-testing the Register page's Student/Company toggle
+  through browser automation, clicks that reported success weren't changing anything
+  on screen; dispatching a real DOM click via JavaScript proved the component logic was
+  correct all along - the mismatch was in how the automated testing tool was interacting
+  with the page in that particular session, not a bug in the code (see
+  `docs/phase-summaries/PHASE_13_SUMMARY.md` for how this was isolated).
+- **Could now explain in an interview:** Why the frontend has its own `types/index.ts`
+  hand-mirroring the backend's DTOs and enums instead of generating one from the OpenAPI
+  spec Phase 12 already produces - a generated client is the "more correct" answer at a
+  larger scale, but for seven endpoints, a generation step would be extra tooling to
+  learn and debug for a project whose whole point is understanding each layer by hand.
+  Why enums serialize as `"Open"` rather than `1` in every API response (Phase 12's
+  `JsonStringEnumConverter`, in `Program.cs` since Phase 1) - and why that specific
+  choice is *why* the frontend's `UserRole`/`WorkMode`/etc. types are plain string
+  unions (`'Student' | 'Company' | 'Admin'`) instead of numeric enums. Why the JWT's
+  `expiresAt` is checked client-side on every app load rather than trusting
+  `localStorage` blindly - an expired-but-still-present token would otherwise render a
+  "logged in" UI that fails on the very first real request, which is worse than just
+  showing logged-out.

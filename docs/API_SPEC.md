@@ -9,6 +9,12 @@ token, then send it as `Authorization: Bearer <token>` on protected endpoints. I
 click **Authorize** and paste just the token (no `Bearer ` prefix needed). Tokens expire
 after 60 minutes.
 
+**CORS (Phase 13):** the API allows cross-origin requests from `http://localhost:5173`
+only — the Vite dev server the `frontend/` React app runs on (see
+`docs/DECISIONS.md` D18). Any other origin's browser-based requests are blocked by the
+browser itself (not by the API rejecting them); Swagger and Postman aren't affected,
+since CORS is a browser-enforced restriction.
+
 ---
 
 ## Error Response Format

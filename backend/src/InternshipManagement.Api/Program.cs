@@ -30,6 +30,18 @@ builder.Services.AddProblemDetails();
 // Catches anything that isn't an expected, handled outcome - see Middleware/GlobalExceptionHandler.cs.
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
+// The React dev server (Phase 13) runs on a different origin (port) than the API, so the
+// browser blocks its fetch calls without this. No AllowCredentials(): auth is a Bearer
+// token in a header, not a cookie, so the stricter credentialed-CORS rules don't apply.
+const string FrontendCorsPolicy = "Frontend";
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(FrontendCorsPolicy, policy =>
+        policy.WithOrigins("http://localhost:5173")
+            .AllowAnyHeader()
+            .AllowAnyMethod());
+});
+
 // Swashbuckle generates the OpenAPI document and serves the interactive Swagger UI.
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -137,6 +149,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseCors(FrontendCorsPolicy);
 
 // Authentication (who are you?) must run before authorization (are you allowed to?).
 app.UseAuthentication();
