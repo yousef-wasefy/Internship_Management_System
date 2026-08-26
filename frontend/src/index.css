@@ -10,6 +10,10 @@
   --color-error-bg: #fdecea;
   --color-success-bg: #e8f5e9;
   --color-success-text: #1e4620;
+  --color-warning-bg: #fff4e5;
+  --color-warning-text: #7a4a00;
+  --color-danger: #b3261e;
+  --color-danger-hover: #8f1e18;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color-scheme: light;
 }
@@ -224,4 +228,196 @@ button:disabled {
   align-items: center;
   gap: 1rem;
   margin-top: 1.5rem;
+}
+
+button.secondary {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+button.secondary:hover:not(:disabled) {
+  background: var(--color-bg);
+}
+
+button.danger {
+  background: var(--color-danger);
+}
+
+button.danger:hover:not(:disabled) {
+  background: var(--color-danger-hover);
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.dashboard-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.dashboard-section h2 {
+  margin-top: 0;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.section-header h2 {
+  margin: 0;
+}
+
+.profile-view {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.4rem 1rem;
+  margin: 0;
+}
+
+.profile-view dt {
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+.profile-view dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.card-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.dashboard-card {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+}
+
+.dashboard-card h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+}
+
+.status-open,
+.status-accepted,
+.status-approved {
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+  border-color: transparent;
+}
+
+.status-pending,
+.status-draft,
+.status-shortlisted {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  border-color: transparent;
+}
+
+.status-rejected,
+.status-cancelled,
+.status-withdrawn,
+.status-closed {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+  border-color: transparent;
+}
+
+.badge-approved {
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+  border: none;
+}
+
+.badge-pending {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  border: none;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1rem;
+}
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.stat-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+th {
+  color: var(--color-muted);
+  font-weight: 600;
 }

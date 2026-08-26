@@ -457,3 +457,50 @@ Template for each entry:
   `localStorage` blindly - an expired-but-still-present token would otherwise render a
   "logged in" UI that fails on the very first real request, which is worse than just
   showing logged-out.
+
+## Phase 14 — Role-Based Dashboards (2026-08-26)
+- **New concepts:** **Route guards** as a plain component, not a framework feature -
+  `ProtectedRoute` is just a component that returns either `<Navigate>` or its children
+  based on `AuthContext`, proving that "protecting a route" in React Router is a
+  rendering decision, not a special API. **Router state for a post-login redirect** -
+  `<Navigate to="/login" state={{ from: location }} />` attaches data to a specific
+  history entry (not global state), which `LoginPage` reads back via `useLocation()` to
+  send the user to where they were actually headed, rather than always to one fixed
+  page. **`localStorage` is shared per browser origin, not per tab** - logging into a
+  second account in a second tab of the same browser silently logs the first tab into
+  that same account too, the next time it does anything that reads storage (see below) -
+  a real, common characteristic of any `localStorage`-based session (not unique to this
+  app), which shaped how the rest of this phase's multi-role testing had to be done
+  (one account logged in at a time, never two tabs with two different accounts open
+  against the same origin at once).
+- **What confused me / how I resolved it:** Logging in as a fresh admin account
+  immediately after building the dashboard redirect landed on the public listing
+  instead of the admin dashboard - looked exactly like the `DashboardRedirectPage`
+  logic was broken. Inspecting `window.history.state` directly showed the real cause:
+  that particular browser tab's navigation history still carried a *stale* redirect
+  target (`from`) attached to an old `/login` history entry from much earlier in the
+  same tab's session, and revisiting that same URL let the browser reuse the old entry's
+  state instead of starting fresh. Testing the exact same login in a brand-new tab (no
+  prior history at all) worked correctly on the first try, proving the redirect logic
+  itself was right - the false alarm was an artifact of reusing one browser tab across
+  many rounds of manual testing, not a bug in `LoginPage` or `DashboardRedirectPage`
+  (see `docs/phase-summaries/PHASE_14_SUMMARY.md` for the full isolation steps). A
+  second, unrelated mix-up during the same testing session: applicants for an internship
+  briefly seemed to vanish after switching accounts - actually the `localStorage`
+  sharing behavior described above, not a data problem; logging back in as the intended
+  account made everything reappear exactly as left.
+- **Could now explain in an interview:** Why `GET /api/internships/{id}` (public) and
+  the new `GET /api/companies/me/internships/{id}` (Phase 14) both exist and return the
+  same DTO shape, rather than making the public endpoint smarter about who's asking -
+  keeping "what anyone can see" and "what an owner can see of their own, regardless of
+  status" as two separate, simply-reasoned-about endpoints beats one endpoint with
+  conditional visibility rules baked in. Why a role-mismatch on a protected route
+  redirects to the public listing rather than showing a "403 Forbidden" page - the
+  wrong dashboard for your role isn't a broken or unauthorized request the way a failed
+  API call is, it's simply not the page for you, and the listing is always a safe,
+  valid place to land instead. Why the company's applicant-review action always sends
+  whatever is in the note field alongside the status change (rather than offering a
+  separate "just save the note" action) - `UpdateApplicationStatusDto`'s `Status` field
+  is not optional server-side, so there is no API call that could update *only* the
+  note without also asserting a status; the UI's one combined action matches what the
+  endpoint actually allows.

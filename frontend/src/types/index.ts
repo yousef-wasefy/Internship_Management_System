@@ -99,3 +99,115 @@ export interface Application {
   reviewedAt: string | null
   companyNotes: string | null
 }
+
+export interface StudentProfile {
+  id: number
+  email: string
+  fullName: string
+  university: string | null
+  faculty: string | null
+  major: string | null
+  academicYear: string | null
+  skills: string | null
+  cvUrl: string | null
+  linkedInUrl: string | null
+  gitHubUrl: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface UpdateStudentProfileRequest {
+  fullName: string
+  university?: string
+  faculty?: string
+  major?: string
+  academicYear?: string
+  skills?: string
+  cvUrl?: string
+  linkedInUrl?: string
+  gitHubUrl?: string
+}
+
+export interface CompanyProfile {
+  id: number
+  email: string
+  companyName: string
+  industry: string | null
+  websiteUrl: string | null
+  description: string | null
+  location: string | null
+  isApproved: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface UpdateCompanyProfileRequest {
+  companyName: string
+  industry?: string
+  websiteUrl?: string
+  description?: string
+  location?: string
+}
+
+export interface CreateInternshipRequest {
+  title: string
+  description?: string
+  requirements?: string
+  responsibilities?: string
+  location?: string
+  workMode: WorkMode
+  duration?: string
+  applicationDeadline: string
+}
+
+export type UpdateInternshipRequest = CreateInternshipRequest
+
+export interface Applicant {
+  id: number
+  internshipPostId: number
+  internshipTitle: string
+  studentFullName: string
+  studentEmail: string
+  studentUniversity: string | null
+  studentMajor: string | null
+  studentSkills: string | null
+  studentLinkedInUrl: string | null
+  studentGitHubUrl: string | null
+  coverLetter: string | null
+  cvUrl: string | null
+  status: ApplicationStatus
+  appliedAt: string
+  updatedAt: string
+  reviewedAt: string | null
+  companyNotes: string | null
+}
+
+// The three statuses a company may set via PATCH /api/applications/{id}/status - not
+// Pending (the default) or Withdrawn (a student-only action). Enforced server-side in
+// ApplicationService.UpdateStatusAsync; mirrored here so the UI only ever offers valid actions.
+export type CompanySettableStatus = 'Shortlisted' | 'Accepted' | 'Rejected'
+
+export interface UpdateApplicationStatusRequest {
+  status: CompanySettableStatus
+  companyNotes?: string
+}
+
+export interface AdminDashboard {
+  totalStudents: number
+  totalCompanies: number
+  pendingCompanies: number
+  totalInternships: number
+  openInternships: number
+  totalApplications: number
+  acceptedApplications: number
+  rejectedApplications: number
+}
+
+export interface AdminUser {
+  id: number
+  email: string
+  displayName: string | null
+  role: UserRole
+  isDisabled: boolean
+  createdAt: string
+}

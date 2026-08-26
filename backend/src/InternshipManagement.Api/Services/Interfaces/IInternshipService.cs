@@ -17,6 +17,11 @@ public interface IInternshipService
     // already sees every status regardless).
     Task<List<InternshipListDto>> GetByCompanyUserIdAsync(int userId, InternshipStatus? status);
 
+    // One of a company's own posts, full details, regardless of status - needed by the
+    // Phase 14 dashboard's "edit" form, which GetByIdAsync can't serve (it 404s on
+    // anything but Open). Ownership-checked like Update/Delete/Open/Close above.
+    Task<(OperationResult Result, InternshipDetailsDto? Internship)> GetOwnedByIdAsync(int id, int userId);
+
     Task<InternshipDetailsDto> CreateAsync(CreateInternshipDto dto, int userId);
     Task<OperationResult> UpdateAsync(int id, UpdateInternshipDto dto, int userId);
     Task<OperationResult> DeleteAsync(int id, int userId);

@@ -272,4 +272,42 @@ reason, and the alternative we rejected — so the choices can be explained in a
   not-yet-expired token still works against the API until it naturally expires — the
   frontend has no way to know that without asking the API).
 
+## D19 — Protected routes via one wrapper component; a new backend endpoint to support the company's edit form
+- **Decision:** Route protection (Phase 14's dashboards) is one small component,
+  `ProtectedRoute`, used as a wrapper around each dashboard/company-management route:
+  not logged in → redirect to `/login`, stashing the attempted location in router state
+  so `LoginPage` can send the user back afterward; logged in as the wrong role →
+  redirect to `/` (the public listing), not an error page. Separately, the backend
+  gained one new endpoint, `GET /api/companies/me/internships/{id}`
+  (`IInternshipService.GetOwnedByIdAsync`), because the company dashboard's "edit
+  internship" form needs a post's full details regardless of status, and the existing
+  public `GET /api/internships/{id}` only ever returns `Open` posts (Phase 8) — it would
+  404 on a company's own Draft or Closed post.
+- **Why:** A single wrapper component is the standard React Router pattern for this and
+  needs no new state beyond what `AuthContext` (D18) already exposes
+  (`isAuthenticated`, `role`) — there is nothing here that justifies a routing library
+  add-on or a more elaborate permissions system at this project's scale (three roles,
+  a handful of routes). Redirecting a role-mismatch to `/` rather than a "403" page
+  reflects that visiting the wrong dashboard isn't an error condition the way a failed
+  API call is — it's just the wrong page for that user, and the public listing is
+  always a safe, valid place to land. The new backend endpoint exists because
+  "let a company edit its own Draft post" is a real, necessary capability the API
+  didn't yet expose — discovered while building the edit form, not part of the original
+  Phase 14 plan, but a small, contained, ownership-checked addition (mirrors the
+  existing `Update`/`Delete`/`Open`/`Close` ownership pattern exactly) rather than a
+  workaround (like relaxing the public endpoint's `Open`-only rule, which would break
+  the actual reason that rule exists — see D-notes on Phase 8).
+- **Rejected:** A more general-purpose route-permissions table/config system (e.g.
+  mapping every path to allowed roles centrally) — meaningful at dozens of routes, not
+  at the eight this phase adds. Relaxing `GET /api/internships/{id}` to allow the owner
+  through regardless of status (would tangle an intentionally simple public endpoint
+  with an owner-specific special case; a separate endpoint under `/companies/me/...`
+  keeps the two concerns — "what the public can see" vs. "what a company can see of its
+  own" — as separate as they already are for the *listing* endpoints).
+- **Also decided alongside this:** login/registration now redirect to `/dashboard` (a
+  small role-dispatch page, `DashboardRedirectPage`) instead of the public listing from
+  Phase 13 — now that dashboards exist, that's the more useful landing spot; the public
+  listing is still one click away via the navbar's "Browse Internships" link, added this
+  phase alongside "Dashboard".
+
 ---

@@ -18,6 +18,8 @@ export function Navbar() {
       <nav className="navbar-links">
         {isAuthenticated ? (
           <>
+            <Link to="/">Browse Internships</Link>
+            <Link to="/dashboard">Dashboard</Link>
             <span className="navbar-user">
               {email} <span className="badge">{role}</span>
             </span>

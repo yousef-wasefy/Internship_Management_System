@@ -80,6 +80,30 @@ public class CompaniesController : ControllerBase
         return Ok(internships);
     }
 
+    /// <summary>
+    /// One of the company's own internship posts, full details, regardless of status.
+    /// Needed because GET /api/internships/{id} only ever returns Open posts (Phase 8) -
+    /// a company otherwise has no way to fetch its own Draft/Closed post to pre-fill an
+    /// edit form.
+    /// </summary>
+    [HttpGet("me/internships/{id:int}")]
+    public async Task<ActionResult<InternshipDetailsDto>> GetMyInternshipById(int id)
+    {
+        var userId = _currentUserAccessor.GetUserId(User);
+        if (userId is null)
+        {
+            return Problem(statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        var (result, internship) = await _internshipService.GetOwnedByIdAsync(id, userId.Value);
+        return result switch
+        {
+            OperationResult.NotFound => Problem(statusCode: StatusCodes.Status404NotFound, detail: "Internship not found."),
+            OperationResult.Forbidden => Problem(statusCode: StatusCodes.Status403Forbidden, detail: "You do not own this internship post."),
+            _ => Ok(internship)
+        };
+    }
+
     // Every applicant across all of the company's internships, in one list.
     [HttpGet("me/applications")]
     public async Task<ActionResult<List<ApplicantDto>>> GetMyApplications()

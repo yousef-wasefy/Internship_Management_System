@@ -28,7 +28,7 @@ export function RegisterPage() {
           ? await registerStudent({ email, password, fullName: name })
           : await registerCompany({ email, password, companyName: name })
       auth.login(response)
-      navigate('/')
+      navigate('/dashboard')
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message)

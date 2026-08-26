@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, type Location } from 'react-router-dom'
 import { login } from '../api/auth'
 import { ApiError } from '../api/client'
 import { ErrorMessage } from '../components/ErrorMessage'
@@ -8,10 +8,16 @@ import { useAuth } from '../context/AuthContext'
 export function LoginPage() {
   const auth = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  // ProtectedRoute stashes the page a logged-out visitor was trying to reach in
+  // location.state.from - if they landed here that way, send them back there after
+  // logging in instead of always to /dashboard.
+  const from = (location.state as { from?: Location } | null)?.from?.pathname
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -20,7 +26,7 @@ export function LoginPage() {
     try {
       const response = await login({ email, password })
       auth.login(response)
-      navigate('/')
+      navigate(from ?? '/dashboard')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.')
     } finally {

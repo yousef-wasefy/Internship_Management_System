@@ -254,6 +254,19 @@ paginated** — a company's own post count is expected to stay small; pagination
 added to the public listing, see Internships below).
 **Response `401`/`403`** — same rules as the other Companies endpoints.
 
+### `GET /api/companies/me/internships/{id}`
+
+*(Phase 14)* One of the company's own internship posts, full details, regardless of
+status. Added specifically because `GET /api/internships/{id}` (the public endpoint)
+only ever returns `Open` posts — a company had no way to fetch its own Draft or Closed
+post's full details (e.g. to pre-fill an edit form) until this endpoint existed. Same
+data shape as the public detail endpoint; the only difference is which posts it can see.
+
+**Response `200 OK`** — `InternshipDetailsDto` (same shape as `GET /api/internships/{id}`).
+**Response `404 Not Found`** — no post with this id exists.
+**Response `403 Forbidden`** — the post exists but belongs to a different company.
+**Response `401`** — no/invalid token, or the token isn't a Company.
+
 ---
 
 ## Admin

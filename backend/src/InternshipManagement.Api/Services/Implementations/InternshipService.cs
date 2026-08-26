@@ -85,6 +85,22 @@ public class InternshipService : IInternshipService
         return posts.Select(ToListDto).ToList();
     }
 
+    public async Task<(OperationResult Result, InternshipDetailsDto? Internship)> GetOwnedByIdAsync(int id, int userId)
+    {
+        var post = await _context.InternshipPosts.Include(p => p.Company).FirstOrDefaultAsync(p => p.Id == id);
+        if (post is null)
+        {
+            return (OperationResult.NotFound, null);
+        }
+
+        if (post.Company.UserId != userId)
+        {
+            return (OperationResult.Forbidden, null);
+        }
+
+        return (OperationResult.Success, ToDetailsDto(post));
+    }
+
     public async Task<InternshipDetailsDto> CreateAsync(CreateInternshipDto dto, int userId)
     {
         // Every Company-role user has exactly one CompanyProfile, created atomically at

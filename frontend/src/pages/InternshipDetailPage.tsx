@@ -91,7 +91,7 @@ export function InternshipDetailPage() {
         <h2>Apply</h2>
         {applied ? (
           <p className="success-box">
-            Application submitted! Track it from your applications list (coming in the next phase).
+            Application submitted! Track it from <Link to="/student/dashboard">your dashboard</Link>.
           </p>
         ) : !auth.isAuthenticated ? (
           <p className="hint">
