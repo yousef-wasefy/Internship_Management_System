@@ -310,4 +310,52 @@ reason, and the alternative we rejected — so the choices can be explained in a
   listing is still one click away via the navbar's "Browse Internships" link, added this
   phase alongside "Dashboard".
 
+## D20 — Service-layer unit tests against EF Core's InMemory provider, not a real Postgres database
+- **Decision:** `backend/tests/InternshipManagement.Tests` (xUnit) tests every service
+  directly - `new AuthService(db, fakeJwt)`, `new InternshipService(db)`, etc. - against
+  a fresh `Microsoft.EntityFrameworkCore.InMemory` database per test
+  (`TestDbContextFactory.Create()`, a new Guid-named database every call, so tests never
+  share state). No mocking framework: `AppDbContext` is used for real (just backed by an
+  in-memory store instead of Postgres), and `IJwtTokenGenerator` gets one small hand-written
+  fake (`FakeJwtTokenGenerator`) since token *signing* isn't a business rule any service
+  under test owns. Two things are deliberately **not** covered by these tests, both
+  because the InMemory provider can't reproduce them: `EF.Functions.ILike`-based query
+  filters (`InternshipService.GetAllAsync`'s location/search filters - Postgres-specific
+  syntax the InMemory provider can't translate) and the duplicate-application
+  race-condition fallback (`ApplicationService.ApplyAsync`'s `catch (... PostgresException
+  ...)` block, which needs a real Postgres unique-constraint violation to trigger). Both
+  were already verified live against the real database in Phases 9 and 12 respectively.
+- **Why:** The project's services take `AppDbContext` directly with no repository
+  interface in between (a deliberate simplicity choice from early phases), so "unit
+  testing a service" necessarily means giving it a real `DbContext` — the question is
+  only which database backs it. EF Core's InMemory provider still enforces the unique
+  indexes configured in `AppDbContext.OnModelCreating` (composite/unique constraints
+  aren't just a Postgres-only detail), runs in milliseconds, needs no connection string
+  or running database, and is exactly what lets `dotnet test` work for anyone who clones
+  this repo without having set up Postgres yet — a meaningful bar for a portfolio
+  project. A real Postgres test database would exercise 100% of the code paths
+  (including the two gaps above) but turns every test run into an integration test
+  dependent on external infrastructure being up and correctly migrated - a heavier
+  setup this phase's scope doesn't call for, given the two gaps are narrow, already
+  covered by manual testing, and explicitly documented rather than silently untested.
+- **Rejected:** A mocking framework (Moq/NSubstitute) for `AppDbContext` - mocking an
+  `IQueryable`-based API convincingly is notoriously awkward and would end up testing
+  "did the code call the mock the way I told the mock to expect" rather than real query
+  behavior; a real (in-memory) database is both simpler to set up and more honest here.
+  A real Postgres test database/Testcontainers setup - more faithful, but meaningfully
+  heavier infrastructure than a ⭐⭐⭐-difficulty phase calls for; worth reconsidering only
+  if a future phase specifically needs to test Postgres-specific behavior end-to-end.
+  Repository interfaces purely to make mocking easier - would mean introducing a layer
+  of abstraction into the *production* code that exists only to serve tests, reversing
+  an intentional simplicity decision from early phases for testing's sake alone.
+- **Also decided alongside this:** shared entity-seeding helpers
+  (`TestHelpers/EntityFactory.cs` - `CreateStudentAsync`, `CreateCompanyAsync`,
+  `NewPost`) live in one file used by every test class, rather than each test file
+  hand-rolling its own near-identical "make a User + profile" boilerplate - the same
+  reasoning as any other DRY cleanup, just applied to test code instead of production
+  code. No `.sln` file was added - `dotnet test backend/tests/InternshipManagement.Tests`
+  and `dotnet build`/`dotnet run --project ...` for the API follow the same
+  explicit-project-path convention this repo has used since Phase 1, rather than
+  introducing solution-file tooling for two projects where it isn't needed.
+
 ---

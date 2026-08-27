@@ -504,3 +504,42 @@ Template for each entry:
   is not optional server-side, so there is no API call that could update *only* the
   note without also asserting a status; the UI's one combined action matches what the
   endpoint actually allows.
+
+## Phase 15 — Testing (2026-08-27)
+- **New concepts:** **xUnit's `[Fact]`/`Assert` model** as the standard shape of a .NET
+  unit test - arrange (build the scenario), act (call the one thing under test), assert
+  (check the result), one behavior per test. **EF Core's InMemory provider** as a way to
+  give a service a real, working `DbContext` in milliseconds with no database server
+  running - and, more subtly, that "in-memory" doesn't mean "no rules enforced": unique
+  indexes configured in `OnModelCreating` are still checked, just not everything a real
+  provider does (Postgres-specific query syntax like `EF.Functions.ILike` has nothing to
+  translate to on an in-memory store). **Test isolation via a fresh database per test** -
+  giving `UseInMemoryDatabase` a new random name every time means tests never see each
+  other's data and can run in any order, in parallel, without any manual cleanup step
+  (unlike this project's own manual live-testing routine every phase, which has always
+  needed an explicit cleanup pass afterward).
+- **What confused me / how I resolved it:** It wasn't obvious at first which parts of
+  `ApplicationService.ApplyAsync`'s duplicate-application handling were even testable
+  without a real Postgres database - the method has *two* layers of protection (an
+  `AnyAsync` pre-check, and a `catch` block for the real database's unique-constraint
+  violation as a race-condition fallback, from Phase 9). Working through it made the
+  distinction clear: the pre-check is ordinary application logic, testable like any
+  other branch; the `catch` block only exists to handle a database-level exception type
+  (`PostgresException`) that only a real Postgres connection can ever throw, so it's
+  fundamentally not something an InMemory-backed test can exercise - not a gap in the
+  test suite's care so much as a boundary of what "unit test" versus "integration test"
+  each cover, which is why it's called out explicitly in `docs/DECISIONS.md` D20 rather
+  than silently left untested with no explanation.
+- **Could now explain in an interview:** Why these are called *unit* tests and not
+  *integration* tests, even though they use a real `AppDbContext` (a "unit" here is
+  "one service's behavior in isolation," not "no dependencies at all" - the InMemory
+  database stands in for a slow, external dependency the same way a mock would, just
+  without needing to hand-write one for an `IQueryable`-based API). Why a mutation
+  check is a meaningful way to trust a test suite - temporarily commenting out the
+  approval-gate condition in `InternshipService.OpenAsync` and re-running the tests
+  made `OpenAsync_UnapprovedCompany_ReturnsValidationFailed` fail immediately, proving
+  the test was actually checking the rule rather than passing regardless of what the
+  code does. Why the test project has no repository-interface layer inserted just to
+  make mocking easier - that would mean changing the *production* code's architecture
+  (removing direct `AppDbContext` access from services) purely to serve tests, when EF
+  Core's InMemory provider already lets the real services be tested directly.
