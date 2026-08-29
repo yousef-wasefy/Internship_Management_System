@@ -85,10 +85,13 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 // In Development, the connection string comes from .NET User Secrets (never committed
-// to git) - see docs/DECISIONS.md D11. appsettings.Development.json only holds a
-// placeholder so the app fails fast with a clear error if secrets aren't configured.
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+// to git) - see docs/DECISIONS.md D11. In Docker (Phase 16), it comes from the
+// ConnectionStrings__DefaultConnection environment variable instead - ASP.NET Core's
+// configuration system maps that double-underscore name to this same config key
+// automatically, so no code here needs to know which source it came from.
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is not configured.");
+builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
 
 builder.Services.AddScoped<IInternshipService, InternshipService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
@@ -136,17 +139,26 @@ var app = builder.Build();
 // exception from any middleware or controller below gets caught here.
 app.UseExceptionHandler();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+// Applies any pending EF Core migrations automatically, in every environment - this is
+// what lets a fresh `docker compose up` (Phase 16) end up with a fully-formed schema
+// with no manual `dotnet ef database update` step. Local development used to require
+// running that command by hand after pulling a new migration; doing it here instead
+// means there's exactly one way this ever happens, not two slightly-different ones to
+// keep in sync. Seeding the admin account (idempotent - see SeedData.cs) runs right
+// after, so a brand new environment has something to log in with immediately.
+using (var scope = app.Services.CreateScope())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-
-    // Seeds an admin account so there's something to log in with while testing.
-    using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await db.Database.MigrateAsync();
     await SeedData.EnsureSeededAsync(db);
 }
+
+// Swagger stays available in every environment, including the Phase 16 Docker
+// "production simulation" and the eventual Phase 17 deploy - unlike a real product,
+// this is a portfolio project where letting anyone explore the API is the point, not a
+// security surface to lock down. See docs/DECISIONS.md D21.
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 

@@ -358,4 +358,49 @@ reason, and the alternative we rejected — so the choices can be explained in a
   explicit-project-path convention this repo has used since Phase 1, rather than
   introducing solution-file tooling for two projects where it isn't needed.
 
+## D21 — Docker Compose topology: nginx reverse-proxies the frontend to the backend; the backend always migrates, seeds, and serves Swagger
+- **Decision:** `docker compose up` runs three services - `postgres` (18-alpine, its own
+  named volume, its own host port 5433 so it never collides with a developer's native
+  Postgres on 5432), `backend` (multi-stage Dockerfile, `ASPNETCORE_ENVIRONMENT=Production`,
+  connection string and JWT key from environment variables via `.env` - never committed,
+  same posture as User Secrets in D11/D12), and `frontend` (multi-stage Dockerfile: Vite
+  build, then nginx serving the static output). Crucially, **nginx also reverse-proxies
+  `/api/*` to the backend container** - the browser only ever talks to nginx's one
+  origin, for both the site and its API calls, so the Dockerized stack needs no CORS at
+  all (unlike the `npm run dev` + `dotnet run` workflow from Phase 13, which still does
+  and keeps its own `AllowOrigins("http://localhost:5173")` policy unchanged - the two
+  setups coexist, each with the CORS posture it actually needs). On the backend, three
+  behaviors that used to be `Development`-only now run in **every** environment: EF
+  Core migrations apply automatically at startup (`Database.MigrateAsync()`), the admin
+  account seeds (already idempotent), and Swagger stays enabled.
+- **Why:** A reverse proxy in front of both the static site and the API is what a real
+  deployment topology actually looks like (one public origin, an API behind it) -
+  closer to "production simulation" than teaching the production container to accept
+  cross-origin browser requests just to dodge the question. Auto-migration exists
+  because a fresh Postgres container starts with an empty schema and there's no
+  developer sitting at a terminal inside it to run `dotnet ef database update` by hand;
+  making that unconditional (not just "when Dockerized") means local development gets
+  the same simplification instead of a second, subtly different code path to keep in
+  sync. Swagger staying on everywhere is a deliberate, explicit call for *this* project
+  specifically: `docs/PROJECT_SCOPE.md`'s success definition is being able to demo and
+  explain the system, and Swagger is the primary tool this project has used for that
+  since Phase 1 - locking it to `Development` would make the very stack meant to
+  demonstrate the finished system unable to demonstrate its own API.
+- **Rejected:** Running the Docker backend with `ASPNETCORE_ENVIRONMENT=Development`
+  instead of restructuring `Program.cs` - would have made Swagger/seeding "just work"
+  with zero code changes, but mislabels a "production simulation" as literally
+  Development, and every future environment-conditional decision would inherit that
+  same confusion. Giving the Dockerized frontend its own CORS-permissive setup instead
+  of a reverse proxy - simpler to wire up, but teaches the less realistic pattern for a
+  phase explicitly about simulating production. A shared host port between the
+  Dockerized Postgres and the native one - would force a developer to stop their own
+  Postgres before ever running `docker compose up`, which defeats "runs alongside your
+  normal dev setup."
+- **Also discovered this phase:** the official `postgres:18-alpine` image changed its
+  expected volume mount point from `/var/lib/postgresql/data` to `/var/lib/postgresql`
+  (it now manages a version-specific subdirectory itself, to support in-place major
+  version upgrades via `pg_upgrade --link`) - mounting at the old, pre-18 path makes the
+  entrypoint refuse to start at all, assuming a botched upgrade. Found by reading the
+  container's own error message on first run and fixed by mounting one level higher.
+
 ---

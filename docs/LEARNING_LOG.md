@@ -543,3 +543,48 @@ Template for each entry:
   make mocking easier - that would mean changing the *production* code's architecture
   (removing direct `AppDbContext` access from services) purely to serve tests, when EF
   Core's InMemory provider already lets the real services be tested directly.
+
+## Phase 16 — Docker & Local Prod Simulation (2026-08-29)
+- **New concepts:** **Multi-stage Docker builds** - a build stage with the full SDK/Node
+  toolchain produces an artifact (a published DLL, a `dist/` folder), then a second,
+  much smaller stage (`aspnet` runtime, `nginx`) copies in only that artifact - the
+  final image never contains a compiler, `node_modules`, or source code at all. **Build
+  time vs. runtime configuration** for a frontend specifically - Vite's `VITE_*`
+  variables get baked into the JavaScript bundle *when `npm run build` runs*, not read
+  fresh every time the container starts, which is why the API base URL had to be a
+  Docker build `ARG`, not a `docker-compose.yml` `environment:` entry (that would only
+  affect the *nginx process*, which never reads it - the already-built JS never would
+  either). **A reverse proxy as the reason two services can share an origin** - nginx
+  serving the frontend's static files *and* forwarding `/api/*` to the backend
+  container means the browser only ever sees one origin, which is what makes the whole
+  CORS conversation from Phase 13 unnecessary for this specific setup (not solved -
+  sidestepped, because the actual cross-origin request never happens here). **Docker
+  Compose health checks and `depends_on: condition: service_healthy`** - the difference
+  between "the Postgres container process has started" and "Postgres is actually ready
+  to accept connections" is exactly the gap a plain `depends_on` (with no condition)
+  doesn't cover, and the one this project's backend's own startup migration needed
+  closed to avoid a race.
+- **What confused me / how I resolved it:** The very first `docker compose up` attempt
+  failed with Postgres refusing to start, citing "data in an unused mount/volume" -
+  looked like a real problem with *this* setup specifically, but was actually the
+  `postgres:18-alpine` image's own entrypoint script protecting against a known Docker
+  Postgres pitfall (upgrading the image without upgrading the actual data via
+  `pg_upgrade`), triggered here just because the compose file mounted the volume at the
+  path Postgres images used *before* version 18, not the new one. Reading the
+  container's own printed explanation (not just the exit code) pointed straight at the
+  fix. A second moment: initially assumed the Dockerized frontend calling the API would
+  need the exact same CORS setup as the Phase 13 dev workflow, until working through
+  *why* CORS exists (different origins) made it clear that putting both services behind
+  one nginx origin removes the precondition for CORS to even apply, rather than needing
+  a Docker-specific CORS policy at all.
+- **Could now explain in an interview:** Why the exact same `Program.cs` code
+  (`Database.MigrateAsync()`, the admin seed, Swagger) now runs in every environment
+  instead of being gated behind `IsDevelopment()` - and why that's a deliberate,
+  documented choice for *this* project (a portfolio piece meant to be explored) rather
+  than a security best practice being ignored. Why the Dockerized Postgres listens on a
+  different host port (5433) than the native one used throughout development (5432) -
+  and why that's about the *host* port only; inside the Docker network, the backend
+  always reaches it as `postgres:5432` regardless. Why a `VITE_API_BASE_URL` of `/api`
+  (a relative path) only makes sense once nginx is in front of both services - it would
+  break instantly in the plain `npm run dev` workflow, which is exactly why that
+  workflow keeps its own separate `.env.development` value instead of sharing this one.

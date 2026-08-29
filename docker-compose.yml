@@ -1,0 +1,65 @@
+# One-command local "production-like" run of the whole system (Phase 16) - a fresh
+# Postgres, the backend applying its own migrations on startup, and the frontend served
+# by nginx (which also reverse-proxies API calls, so the browser only ever talks to one
+# origin). Separate from day-to-day development (dotnet run + npm run dev,
+# docs/DECISIONS.md D18/D21), which still talks to the developer's own local Postgres.
+#
+# Usage: copy .env.example to .env, fill in real values, then `docker compose up --build`.
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      # Host 5433, not 5432 - many machines (this one included) already have a native
+      # Postgres listening on 5432 for local development; this container's own data is
+      # entirely separate from that database regardless of which host port it's on.
+      - "5433:5432"
+    volumes:
+      # Postgres 18's official image changed its expected mount point from
+      # /var/lib/postgresql/data to /var/lib/postgresql (it now manages a
+      # version-specific subdirectory underneath itself) - mounting at the old path
+      # makes the entrypoint refuse to start, assuming a botched major-version upgrade.
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend/src/InternshipManagement.Api
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      # Double underscore is ASP.NET Core's environment-variable convention for a
+      # nested config key (ConnectionStrings:DefaultConnection) - see Program.cs.
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      Jwt__Key: ${JWT_KEY}
+    ports:
+      - "5053:8080"
+    depends_on:
+      postgres:
+        # Not just "container started" (Compose's default) - "actually accepting
+        # connections," so the backend's own startup migration never races Postgres's
+        # own initialization.
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
