@@ -9,15 +9,18 @@ token, then send it as `Authorization: Bearer <token>` on protected endpoints. I
 click **Authorize** and paste just the token (no `Bearer ` prefix needed). Tokens expire
 after 60 minutes.
 
-**CORS (Phase 13):** for local development (`npm run dev` + `dotnet run`), the API
-allows cross-origin requests from `http://localhost:5173` only — the Vite dev server the
-`frontend/` React app runs on (see `docs/DECISIONS.md` D18). Any other origin's
-browser-based requests are blocked by the browser itself (not by the API rejecting
-them); Swagger and Postman aren't affected, since CORS is a browser-enforced
-restriction. **This CORS policy is unused by the Docker Compose setup** (Phase 16) —
-there, nginx reverse-proxies the frontend and the API behind one shared origin, so the
-browser never makes a cross-origin request in the first place. See `docs/DECISIONS.md`
-D21 and the root `docker-compose.yml` for how that setup runs.
+**CORS:** allowed origins come from `Cors:AllowedOrigins` (a comma-separated config
+value; env var `Cors__AllowedOrigins`), defaulting to `http://localhost:5173` — the
+Vite dev server the `frontend/` React app runs on locally (Phase 13, see
+`docs/DECISIONS.md` D18). Any other origin's browser-based requests are blocked by the
+browser itself (not by the API rejecting them); Swagger and Postman aren't affected,
+since CORS is a browser-enforced restriction. **This CORS policy is unused by the
+Docker Compose setup** (Phase 16) — there, nginx reverse-proxies the frontend and the
+API behind one shared origin, so the browser never makes a cross-origin request in the
+first place. The **Render deployment** (Phase 17) is the other real user of this
+setting — it sets `Cors__AllowedOrigins` to the deployed frontend's actual URL, since
+that's a genuinely different, separate origin from the API there. See
+`docs/DECISIONS.md` D21/D22, `docker-compose.yml`, and `docs/DEPLOYMENT.md`.
 
 ---
 

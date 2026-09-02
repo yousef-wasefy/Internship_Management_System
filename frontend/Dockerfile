@@ -10,19 +10,22 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
-
-# Vite bakes VITE_* variables into the built JS at build time, not read at container
-# startup - so this has to be a build ARG, not a runtime environment variable. "/api" is
-# a same-origin relative path: nginx.conf below reverse-proxies it to the backend
-# container, so the browser only ever talks to one origin and needs no CORS here (unlike
-# the separate-origin `npm run dev` workflow in .env.development, which still needs it -
-# see docs/DECISIONS.md D21).
-ARG VITE_API_BASE_URL=/api
-ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 RUN npm run build
 
 # ---- Runtime stage ----
 FROM nginx:alpine AS runtime
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# The actual API URL is injected at container *startup*, not baked in above - see
+# docs/DECISIONS.md D22. env-config.template.js has the placeholder;
+# 40-generate-env-config.sh (run automatically by the base image's own entrypoint,
+# which executes every script under /docker-entrypoint.d/) turns it into the
+# env-config.js the browser loads, using whatever API_BASE_URL this container starts
+# with - the same image works in Docker Compose, on Render, or anywhere else.
+COPY docker/env-config.template.js /usr/share/nginx/html/env-config.template.js
+COPY docker/40-generate-env-config.sh /docker-entrypoint.d/40-generate-env-config.sh
+RUN chmod +x /docker-entrypoint.d/40-generate-env-config.sh
+ENV API_BASE_URL=/api
+
 EXPOSE 80

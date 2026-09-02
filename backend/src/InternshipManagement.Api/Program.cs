@@ -33,11 +33,18 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 // The React dev server (Phase 13) runs on a different origin (port) than the API, so the
 // browser blocks its fetch calls without this. No AllowCredentials(): auth is a Bearer
 // token in a header, not a cookie, so the stricter credentialed-CORS rules don't apply.
+// The allowed origins are configurable (Cors:AllowedOrigins, a comma-separated list)
+// rather than hardcoded, because Phase 17's deployed frontend has its own real origin
+// that only exists once Render assigns it - see docs/DECISIONS.md D22. Docker Compose
+// (Phase 16) doesn't need this at all (its nginx reverse-proxies same-origin instead),
+// so the default here only ever needs to cover local `npm run dev`.
 const string FrontendCorsPolicy = "Frontend";
+var allowedOrigins = (builder.Configuration["Cors:AllowedOrigins"] ?? "http://localhost:5173")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(FrontendCorsPolicy, policy =>
-        policy.WithOrigins("http://localhost:5173")
+        policy.WithOrigins(allowedOrigins)
             .AllowAnyHeader()
             .AllowAnyMethod());
 });
@@ -88,9 +95,14 @@ builder.Services.AddSwaggerGen(options =>
 // to git) - see docs/DECISIONS.md D11. In Docker (Phase 16), it comes from the
 // ConnectionStrings__DefaultConnection environment variable instead - ASP.NET Core's
 // configuration system maps that double-underscore name to this same config key
-// automatically, so no code here needs to know which source it came from.
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is not configured.");
+// automatically, so no code here needs to know which source it came from. Render
+// (Phase 17) hands out its managed Postgres connection string in URI form
+// (postgres://user:pass@host:port/db) rather than Npgsql's own Host=...;... keyword
+// format, so ConnectionStringHelper normalizes either shape into the one Npgsql
+// actually expects - see docs/DECISIONS.md D22.
+var connectionString = ConnectionStringHelper.ToNpgsqlConnectionString(
+    builder.Configuration.GetConnectionString("DefaultConnection")
+        ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is not configured."));
 builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
 
 builder.Services.AddScoped<IInternshipService, InternshipService>();

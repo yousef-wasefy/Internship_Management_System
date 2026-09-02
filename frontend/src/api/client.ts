@@ -4,7 +4,21 @@
 // the backend's RFC 9457 Problem Details body on failure (see docs/DECISIONS.md D17),
 // and throw an ApiError the UI can display directly via .message.
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string
+declare global {
+  interface Window {
+    // Populated at container *startup* (not build time) by
+    // docker-entrypoint.d/40-generate-env-config.sh running envsubst over
+    // env-config.template.js - see docs/DECISIONS.md D22. Lets the exact same built
+    // image be deployed anywhere (Docker Compose, Render, ...) with a different API
+    // URL, without rebuilding. Absent entirely in the plain `npm run dev` workflow.
+    __ENV__?: { API_BASE_URL?: string }
+  }
+}
+
+// `npm run dev` has no container/entrypoint to populate window.__ENV__, so it falls
+// back to the build-time Vite variable from .env.development instead - the two
+// workflows each get their config from the mechanism that actually applies to them.
+const API_BASE_URL = window.__ENV__?.API_BASE_URL || (import.meta.env.VITE_API_BASE_URL as string)
 
 export class ApiError extends Error {
   status: number

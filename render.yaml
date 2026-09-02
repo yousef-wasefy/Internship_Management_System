@@ -1,0 +1,58 @@
+# Render Blueprint (Phase 17) - defines the whole public deployment as code, applied
+# via Render's dashboard: New > Blueprint, pointing at this repo. See
+# docs/DEPLOYMENT.md for the full step-by-step walkthrough (account creation, secrets,
+# what to check after the first deploy) and docs/DECISIONS.md D22 for why each piece is
+# configured the way it is.
+#
+# IMPORTANT - two values below are *guesses* at the final public hostnames, since
+# render.yaml has no way to reference another service's public URL (only its private
+# network one, which a browser can never reach - see D22). If Render assigns different
+# actual names for "internship-mgmt-api" or "internship-mgmt-frontend" (e.g. because
+# they're already taken), update the two env vars marked "UPDATE IF THE NAME CHANGED"
+# below to match, from the Render dashboard, after the first deploy.
+
+databases:
+  - name: internship-mgmt-db
+    databaseName: internship_management
+    user: internship_app
+    plan: free # Expires 30 days after creation (+ a 14-day grace period) unless
+    # upgraded to a paid plan - fine for an initial public demo, not for a
+    # permanently-online one. See docs/DEPLOYMENT.md.
+
+services:
+  - type: web
+    name: internship-mgmt-api
+    runtime: docker
+    dockerfilePath: ./backend/src/InternshipManagement.Api/Dockerfile
+    dockerContext: ./backend/src/InternshipManagement.Api
+    plan: free
+    healthCheckPath: /api/internships
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: PORT
+        value: "8080" # matches ASPNETCORE_HTTP_PORTS in the Dockerfile
+      - key: ConnectionStrings__DefaultConnection
+        fromDatabase:
+          name: internship-mgmt-db
+          property: connectionString
+      - key: Jwt__Key
+        generateValue: true # a random 256-bit secret, generated once by Render
+      - key: Cors__AllowedOrigins
+        # UPDATE IF THE NAME CHANGED - must be the frontend service's real public URL.
+        value: https://internship-mgmt-frontend.onrender.com
+
+  - type: web
+    name: internship-mgmt-frontend
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: free
+    envVars:
+      - key: PORT
+        value: "80" # matches nginx's listen port
+      - key: API_BASE_URL
+        # UPDATE IF THE NAME CHANGED - must be the backend service's real public URL.
+        # Read at container *startup*, not baked into the build - see D22 - so changing
+        # this later only needs a redeploy of this service, not a rebuild of the other.
+        value: https://internship-mgmt-api.onrender.com/api

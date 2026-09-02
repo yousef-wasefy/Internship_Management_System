@@ -403,4 +403,53 @@ reason, and the alternative we rejected — so the choices can be explained in a
   entrypoint refuse to start at all, assuming a botched upgrade. Found by reading the
   container's own error message on first run and fixed by mounting one level higher.
 
+## D22 — Deployment (Render): runtime env-config for the frontend, configurable CORS, and a Postgres URI normalizer
+- **Decision:** Three changes made Phase 16's images deployable to Render as-is,
+  without a Render-specific image. (1) The frontend no longer bakes its API URL into
+  the JS bundle at Docker *build* time (Render's Blueprint spec has no way to pass a
+  Docker `--build-arg`, confirmed by reading Render's own `render.yaml` JSON schema -
+  it exposes `dockerfilePath`/`dockerContext`/`dockerCommand` but nothing for build
+  args). Instead, `env-config.template.js` gets turned into the real `env-config.js`
+  the browser loads by a script under `/docker-entrypoint.d/` (the official nginx
+  image's own hook mechanism, using `envsubst`, already present in that image for its
+  own config-templating feature) - at container *startup*, from an `API_BASE_URL`
+  environment variable. `client.ts` reads `window.__ENV__.API_BASE_URL` first, falling
+  back to the Vite build-time variable only for `npm run dev` (which has no container
+  or entrypoint to populate `window.__ENV__` at all). (2) The backend's CORS origins
+  moved from a hardcoded `"http://localhost:5173"` to a configurable
+  `Cors:AllowedOrigins` (comma-separated), so the deployed frontend's real
+  `*.onrender.com` origin can be added via one Render environment variable, no code
+  change or rebuild required. (3) `ConnectionStringHelper.ToNpgsqlConnectionString`
+  normalizes Render's Postgres connection string, handed out as a URI
+  (`postgres://user:pass@host:port/db`), into the `Host=...;Port=...;...` keyword
+  format Npgsql's `UseNpgsql` actually expects - anything not starting with
+  `postgres(ql)://` (local dev, Docker Compose) passes through completely unchanged.
+- **Why:** (1) is a direct consequence of a real platform limitation, not a design
+  preference - once Docker build args weren't available, *some* form of runtime
+  configuration was the only way the same image could still work in more than one
+  environment (Docker Compose locally, Render publicly) without maintaining two
+  separate frontend images. (2) exists because the deployed frontend's origin is a real
+  domain that doesn't exist until Render creates the service - hardcoding a guess into
+  source code and redeploying if wrong is worse than one environment variable set once
+  in the dashboard. (3) exists because Npgsql and "a cloud provider's connection
+  string" are simply two different, incompatible string formats for the same
+  information - something has to bridge them, and doing it in one small, directly
+  tested helper (see `ConnectionStringHelperTests`) is simpler than trying to configure
+  Npgsql to accept a format it doesn't parse.
+- **Rejected:** Keeping the Phase 16 build-arg approach and building a *second*,
+  Render-specific frontend image - works, but means two Dockerfiles (or one with
+  environment-specific branches) to keep in sync for what's fundamentally the same
+  static site. Hardcoding the deployed frontend's origin directly into `Program.cs` -
+  couples application source code to a specific deployment's domain name, breaking the
+  moment that domain changes for any reason. A Postgres connection pooler or ORM-level
+  URI support instead of `ConnectionStringHelper` - Npgsql's own `UseNpgsql` simply
+  doesn't accept the URI form directly, and reaching for a bigger dependency to solve a
+  fifteen-line parsing problem isn't warranted here.
+- **Also decided alongside this:** Render's free tier was chosen deliberately for an
+  initial public demo, with its real limitations (a free Postgres instance expires 30
+  days after creation, and free web services spin down after inactivity, cold-starting
+  slowly on the next request) documented plainly in `docs/DEPLOYMENT.md` rather than
+  hidden - upgrading either resource later needs no code change, only a plan change in
+  Render's dashboard.
+
 ---

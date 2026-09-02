@@ -53,9 +53,12 @@ services:
   frontend:
     build:
       context: ./frontend
-      args:
-        VITE_API_BASE_URL: /api
     restart: unless-stopped
+    environment:
+      # Read at container startup, not build time - see docs/DECISIONS.md D22. "/api" is
+      # a same-origin relative path; nginx.conf reverse-proxies it to the backend
+      # container, so the browser never makes a cross-origin request here.
+      API_BASE_URL: /api
     ports:
       - "8081:80"
     depends_on:

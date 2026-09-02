@@ -8,6 +8,10 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Plain (non-module) script, so it runs synchronously before the deferred module
+         script below evaluates client.ts's top-level API_BASE_URL - see
+         docs/DECISIONS.md D22. -->
+    <script src="/env-config.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
