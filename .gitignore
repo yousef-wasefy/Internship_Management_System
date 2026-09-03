@@ -42,3 +42,5 @@ appsettings.Development.local.json
 *.pfx
 
 docs/phase-summaries/
+docs/CV_BULLETS.md
+docs/INTERVIEW_PREP.md
